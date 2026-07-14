@@ -22,7 +22,7 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:paymentpass}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 15 # [NEW] KEDA 스케일아웃 대비 DB 커넥션 폭증 방어
+      maximum-pool-size: 5 # [NEW] KEDA 스케일아웃 대비 DB 커넥션 폭증 방어 (최대 5개로 제한)
 
   jpa: # JPA 설정 예시
     hibernate:
