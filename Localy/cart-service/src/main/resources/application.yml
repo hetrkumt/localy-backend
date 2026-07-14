@@ -1,0 +1,59 @@
+# 장바구니 서비스 application.yml
+
+server:
+  port: 8090 # Docker Compose에서 8090:8090으로 매핑됨
+
+spring:
+  application:
+    name: cart-service # 서비스 이름 지정 (선택 사항이지만 유용)
+
+  redis:
+    # Docker 환경에서는 SPRING_DATA_REDIS_HOST 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 localhost 사용
+    host: ${SPRING_DATA_REDIS_HOST:localhost}
+    # Docker 환경에서는 SPRING_DATA_REDIS_PORT 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 6379 사용
+    port: ${SPRING_DATA_REDIS_PORT:6379} # Redis 기본 포트 (Compose에서 외부에 노출 안 했지만 내부 통신은 가능)
+
+  kafka:
+    # Docker 환경에서는 SPRING_KAFKA_BOOTSTRAP_SERVERS 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 localhost:9092 사용
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  cloud:
+    stream:
+      kafka:
+        binder:
+          # Kafka 바인더 브로커 주소는 spring.kafka.bootstrap-servers 속성 값을 참조
+          brokers: ${spring.kafka.bootstrap-servers}
+          # properties:
+          #   configuration:
+          #     # 컨슈머 및 프로듀서 공통 속성
+      bindings:
+      # 장바구니 서비스의 Kafka 바인딩 설정 (필요하다면 추가)
+      # 예: orderCreatedConsumer-in-0:
+      #       destination: order-created
+      #       group: cart-order-group
+      #       consumer:
+      #         configuration:
+      #           auto.offset.reset: earliest
+      #           key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      #           value.deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      #           spring.json.trusted.packages: com.localy.order_service.order.message.dto
+      # 예: cartEventProducer-out-0:
+      #       destination: cart-events
+      #       contentType: application/json
+
+    # function:
+    #   definition: # 사용할 함수형 빈 이름 명시 (필요하다면 추가)
+
+logging:
+  level:
+    com.localy.cart_service.orderIntegration.config.client: DEBUG # 예시 로깅 레벨
+
+# 다른 서비스 주소 설정 (예: 주문 서비스)
+# Docker 환경에서는 ORDER_SERVICE_URL 환경 변수 값 사용
+# 로컬 환경에서는 기본값 http://localhost:8091 사용
+order:
+  service:
+    url: ${ORDER_SERVICE_URL:http://localhost:8091}

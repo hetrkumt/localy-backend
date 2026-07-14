@@ -1,0 +1,29 @@
+---- 기존 데이터 삭제 (개발 환경에서 테이블을 재생성하지 않고 데이터만 다시 넣고 싶을 때 사용)
+---- 주의: 외래 키 제약 조건 때문에 삭제 순서가 중요합니다. menus를 먼저 삭제해야 합니다.
+---- DELETE FROM menus;
+---- DELETE FROM stores;
+--
+---- 가게 테이블 (stores) 예시 데이터
+--INSERT INTO stores (id, owner_id, name, description, address, latitude, longitude, phone, opening_hours, status, category, main_image_url, gallery_image_urls_json, created_at, updated_at) VALUES
+--(1, 'owner-uuid-123', '매콤이네 떡볶이 분식', '스트레스 확 풀리는 매운 떡볶이 전문점! 다양한 튀김과 순대도 있어요.', '서울시 강남구 역삼동 123-45', 37.50123, 127.03456, '02-555-1234', '매일 11:00 - 22:00', 'OPEN', 'SNACKS_STREET_FOOD', '/store-images/tteokbokki_main.jpg', '["/store-images/tteokbokki_gallery1.jpg", "/store-images/tteokbokki_gallery2.jpg"]', NOW(), NOW()),
+--(2, 'owner-uuid-456', '신선한 우리동네 과일가게', '매일 새벽 시장에서 직접 공수해오는 신선한 제철 과일 전문점입니다.  전 국 택배 가능!', '서울시 마포구 서교동 678-90', 37.55678, 126.92123, '02-333-5678', '월-토 09:00 - 20:00', 'OPEN', 'FRUITS_VEGETABLES', '/store-images/fruit_main.jpg', '["/store-images/fruit_gallery1.jpg"]', NOW(), NOW()),
+--(3, 'owner-uuid-789', '왕가네 한식 백반', '어머니의 손맛 그대로! 매일 바뀌는 맛있는 백반 정식과 다양한 한식 메뉴가 준 비 되어 있습니다.', '서울시 종로구 인사동 11-22', 37.57333, 126.98666, '02-777-8901', '매일 10:00 - 21:00 (일요일 휴무)', 'OPEN', 'KOREAN_FOOD', '/store-images/korean_main.jpg', '[]', NOW(), NOW()),
+--(4, 'owner-uuid-101', '더 쫄깃한 족발보쌈', '국내산 생족을 매일 직접 삶아 제공하는 족발 맛집. 보쌈과 막국수도 일품!', ' 서울시 송파구 잠실동 33-44', 37.51111, 127.09000, '02-444-2345', '매일 16:00 - 01:00', 'OPEN', 'KOREAN_FOOD', '/store-images/jokbal_main.jpg', '["/store-images/jokbal_gallery1.jpg"]', NOW(), NOW());
+--
+---- 메뉴 테이블 (menus) 예시 데이터
+--INSERT INTO menus (store_id, name, description, price, image_url, is_available, created_at, updated_at) VALUES
+---- 매콤이네 떡볶이 분식 (store_id: 1)
+--(1, '매콤 국물 떡볶이', '중독성 강한 매콤한 국물 떡볶이 (2인분)', 12000.00, '/images/menu_tteokbokki_spicy.jpg', TRUE, NOW(), NOW()),
+--(1, '모듬튀김', '김말이, 야채튀김, 오징어튀김, 고구마튀김 구성', 5000.00, '/images/menu_fried_assorted.jpg', TRUE, NOW(), NOW()),
+--(1, '찰순대', '쫄깃한 찰순대와 내장 (1인분)', 4500.00, '/images/menu_soondae.jpg', TRUE, NOW(), NOW()),
+--
+---- 신선한 우리동네 과일가게 (store_id: 2)
+--(2, '샤인머스캣 (1kg)', '씨 없이 달콤한 고품질 샤인머스캣', 25000.00, '/images/menu_shine_muscat.jpg', TRUE, NOW(), NOW()),
+--(2, '제주 애플망고 (1개)', '항공 직송으로 신선한 제주산 애플망고', 18000.00, '/images/menu_apple_mango.jpg', FALSE, NOW(), NOW()), -- 판매 중지 예시
+--
+---- 왕가네 한식 백반 (store_id: 3)
+--(3, '오늘의 백반 정식', '매일 바뀌는 6가지 반찬과 국, 밥', 9000.00, '/images/menu_baekban.jpg', TRUE, NOW(), NOW()),
+--(3, '제육볶음', '매콤한 양념에 볶아낸 돼지고기 제육볶음', 10000.00, '/images/menu_jeyuk.jpg', TRUE, NOW(), NOW()),
+--
+---- 더 쫄깃한 족발보쌈 (store_id: 4)
+--(4, '왕족발 (대)', '국내산 생족으로 매일 삶는 쫄깃한 왕족발', 38000.00, '/images/menu_jokbal_large.jpg', TRUE, NOW(), NOW());

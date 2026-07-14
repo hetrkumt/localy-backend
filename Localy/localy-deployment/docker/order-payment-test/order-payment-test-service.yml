@@ -1,0 +1,61 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  # 장바구니 서비스 (여러분의 Spring Boot 애플리케이션)
+  cart-service:
+    image: cart-service # 여러분이 빌드한 도커 이미지 이름
+    hostname: cart-service
+    ports:
+      - "8090:8090"
+    depends_on:
+      - redis
+      - kafka # 레디스와 카프카가 먼저 시작되도록 의존성 설정
+    environment: # 애플리케이션이 DB와 카프카에 접속하도록 설정
+      SPRING_DATA_REDIS_HOST: localy-cart-redis # 레디스 서비스 이름 사용
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: localy-kafka:29092 # 카프카 내부 통신용 리스너 사용
+      ORDER_SERVICE_URL: http://order-service:8091 # **주문 서비스의 Docker 서비스 이름과 내부 포트 사용**
+    restart: on-failure # 실패 시 재시작
+
+  # 주문 서비스 (여러분의 Spring Boot 애플리케이션)
+  order-service:
+    image: order-service # 여러분이 빌드한 도커 이미지 이름
+    hostname: order-service
+    ports:
+      - "8091:8091"
+    depends_on:
+      - localy-order-postgre
+      - localy-kafka # PostgreSQL과 카프카가 먼저 시작되도록 의존성 설정
+    environment: # 애플리케이션 컨테이너 실행 시 주입될 환경 변수
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localy-order-postgre:5432/orderdb # DB 서비스 이름과 내부 포트
+      SPRING_DATASOURCE_USERNAME: orderuser # **DB 서비스에 설정된 사용자 이름**
+      SPRING_DATASOURCE_PASSWORD: orderpass # **DB 서비스에 설정된 비밀번호**
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: localy-kafka:29092 # **올바른 서비스 이름과 내부 포트 사용**
+      # Spring Cloud Stream Kafka Binding 설정 등은 application.yml에 (또는 환경변수로)
+    restart: on-failure
+
+  # 결제 서비스 (여러분의 Spring Boot 애플리케이션)
+  payment-service:
+    image: payment-service # 여러분이 빌드한 도커 이미지 이름
+    hostname: payment-service
+    ports:
+      - "8092:8092"
+    depends_on:
+      - localy-payment-postgre
+      - localy-kafka # PostgreSQL과 카프카가 먼저 시작되도록 의존성 설정
+    environment: # 애플리케이션 컨테이너 실행 시 주입될 환경 변수
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localy-payment-postgre:5432/paymentdb # DB 서비스 이름과 내부 포트
+      SPRING_DATASOURCE_USERNAME: paymentuser # **DB 서비스에 설정된 사용자 이름**
+      SPRING_DATASOURCE_PASSWORD: paymentpass # **DB 서비스에 설정된 비밀번호**
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: localy-kafka:29092 # **올바른 서비스 이름과 내부 포트 사용**
+      # Spring Cloud Stream Kafka Binding 설정 등은 application.yml에 (또는 환경변수로)
+    restart: on-failure
+
+
+# 데이터 지속성을 위한 볼륨 정의 (DB 데이터 보존)
+volumes:
+  order_data:
+  payment_data:
+  # redis_data: # 레디스 데이터도 보존하려면 추가

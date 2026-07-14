@@ -1,0 +1,144 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  # 장바구니 서비스 (여러분의 Spring Boot 애플리케이션)
+  cart-service:
+    image: cart-service # 여러분이 빌드한 도커 이미지 이름
+    hostname: cart-service
+    ports:
+      - "8090:8090"
+    depends_on:
+      - redis
+      - kafka # 레디스와 카프카가 먼저 시작되도록 의존성 설정
+    environment: # 애플리케이션이 DB와 카프카에 접속하도록 설정
+      SPRING_DATA_REDIS_HOST: redis # 레디스 서비스 이름 사용
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092 # 카프카 내부 통신용 리스너 사용
+      # 다른 Spring 설정 (포트 등)은 여러분의 애플리케이션 설정 파일에 이미 되어 있을 것입니다.
+    restart: on-failure # 실패 시 재시작
+
+  # 주문 서비스 (여러분의 Spring Boot 애플리케이션)
+  order-service:
+    image: order-service # 여러분이 빌드한 도커 이미지 이름
+    hostname: order-service
+    ports:
+      - "8091:8091"
+    depends_on:
+      - localy-order-postgre
+      - kafka # PostgreSQL과 카프카가 먼저 시작되도록 의존성 설정
+    environment: # 애플리케이션이 DB와 카프카에 접속하도록 설정
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localy-order-postgre:5432/orderdb # DB 서비스 이름과 내부 포트 사용
+      SPRING_DATASOURCE_USERNAME: orderuser
+      SPRING_DATASOURCE_PASSWORD: orderpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092 # 카프카 내부 통신용 리스너 사용
+      # Spring Cloud Stream Kafka Binding 설정은 애플리케이션 설정 파일에 있어야 합니다.
+    restart: on-failure
+
+  # 결제 서비스 (여러분의 Spring Boot 애플리케이션)
+  payment-service:
+    image: payment-service # 여러분이 빌드한 도커 이미지 이름
+    hostname: payment-service
+    ports:
+      - "8092:8092"
+    depends_on:
+      - localy-payment-postgre
+      - kafka # PostgreSQL과 카프카가 먼저 시작되도록 의존성 설정
+    environment: # 애플리케이션이 DB와 카프카에 접속하도록 설정
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localy-payment-postgre:5432/paymentdb # DB 서비스 이름과 내부 포트 사용
+      SPRING_DATASOURCE_USERNAME: paymentuser
+      SPRING_DATASOURCE_PASSWORD: paymentpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092 # 카프카 내부 통신용 리스너 사용
+      # Spring Cloud Stream Kafka Binding 설정은 애플리케이션 설정 파일에 있어야 합니다.
+    restart: on-failure
+
+  #데이터베이스
+  # 레디스 (장바구니 서비스용)
+  redis:
+    image: redis:latest
+    hostname: redis
+    ports:
+      - "6379:6379" # 로컬에서 레디스 접속이 필요할 경우 주석 해제 (일반적으론 불필요)
+    restart: unless-stopped
+
+  # PostgreSQL (주문 서비스용)
+  localy-order-postgre:
+    image: postgres:latest
+    hostname: localy-order-postgre
+    ports:
+      - "5432:5432" # 로컬에서 DB 접속이 필요할 경우 주석 해제
+    environment:
+      POSTGRES_DB: orderdb # 사용할 DB 이름
+      POSTGRES_USER: orderuser # DB 접속 사용자
+      POSTGRES_PASSWORD: orderpass # DB 접속 비밀번호
+    volumes:
+      - order_data:/var/lib/postgresql/data # 데이터 유지를 위한 볼륨 설정
+    restart: unless-stopped
+
+  # PostgreSQL (결제 서비스용)
+  localy-payment-postgre:
+    image: postgres:latest
+    hostname: localy-payment-postgre
+    ports:
+      - "5433:5432" # 로컬에서 DB 접속이 필요할 경우 5432 외 다른 포트 사용
+    environment:
+      POSTGRES_DB: paymentdb # 사용할 DB 이름
+      POSTGRES_USER: paymentuser # DB 접속 사용자
+      POSTGRES_PASSWORD: paymentpass # DB 접속 비밀번호
+    volumes:
+      - payment_data:/var/lib/postgresql/data # 데이터 유지를 위한 볼륨 설정
+    restart: unless-stopped
+
+  # pgAdmin (PostgreSQL 관리 도구)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    hostname: pgadmin
+    ports:
+      - "5050:80" # 로컬에서 pgAdmin 웹 접속할 포트 : 컨테이너 내부 포트
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@test.com # pgAdmin 로그인 이메일
+      PGADMIN_DEFAULT_PASSWORD: admin # pgAdmin 로그인 비밀번호
+      PGADMIN_LISTEN_PORT: 80 # pgAdmin 내부 포트
+    depends_on:
+      - localy-order-postgre # DB 컨테이너가 먼저 시작되도록 의존성 설정
+      - localy-payment-postgre
+    restart: unless-stopped
+
+  # 주키퍼
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0 # 특정 버전 명시 권장
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_SERVERS: zookeeper:2888:3888
+    restart: unless-stopped
+
+  # 카프카 (단일 브로커 - 테스트용)
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0 # 특정 버전 명시 권장
+    hostname: kafka
+    ports:
+      - "9092:9092" # 외부 (로컬 PC) 에서 접근할 포트 : 컨테이너 내부 포트
+    depends_on:
+      - zookeeper # 카프카는 주키퍼보다 먼저 실행되어야 함
+    environment:
+      KAFKA_BROKER_ID: 1 # 브로커 ID (클러스터 내에서 고유해야 함)
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181 # 주키퍼 서비스 이름과 포트 사용
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092 # 내부 통신용, 외부 통신용 리스너 설정
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092 # 다른 컨테이너(kafka:29092) 및 외부(localhost:9092)에서 접근할 주소
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # 브로커 간 통신에 사용할 리스너 이름 (단일 브로커라 큰 의미 없지만 클러스터 시 중요)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # 테스트용, 운영은 3 이상 권장
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1 # 테스트용, 운영은 3 이상 권장
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1 # 테스트용, 운영은 2 이상 권장
+    restart: unless-stopped
+
+# 데이터 지속성을 위한 볼륨 정의 (DB 데이터 보존)
+volumes:
+  order_data:
+  payment_data:
+  # redis_data: # 레디스 데이터도 보존하려면 추가

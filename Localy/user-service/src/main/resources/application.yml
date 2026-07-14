@@ -1,0 +1,75 @@
+server:
+  port: 9001
+  shutdown: graceful
+
+spring:
+  application:
+    name: user-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: user-service
+            client-secret: ${KEYCLOAK_CLIENT_SECRET:user-secret}
+            authorization-grant-type: client_credentials
+            scope:
+              - openid
+              - profile
+              - email
+        provider:
+          keycloak:
+            issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
+      resource-server:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
+
+keycloak:
+  base-url: ${KEYCLOAK_BASE_URL:http://localhost:8080}
+  realm: localy
+  user-service:
+    client-id: user-service
+    client-secret: ${KEYCLOAK_CLIENT_SECRET:user-secret}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  health:
+    defaults:
+      enabled: true
+    ping:
+      enabled: false
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      keycloakClient:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 100
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        slowCallRateThreshold: 75
+        slowCallDurationThreshold: 2000ms
+        waitDurationInOpenState: 15000ms
+        registerHealthIndicator: true
+  retry:
+    instances:
+      keycloakClient:
+        maxAttempts: 2
+        waitDuration: 100ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$BadGateway
+          - org.springframework.web.reactive.function.client.WebClientResponseException$GatewayTimeout
+          - java.util.concurrent.TimeoutException

@@ -1,0 +1,203 @@
+# Docker Compose 파일 형식 버전 지정 (Swarm 배포 시 v3.x 이상 권장)
+version: '3.8'
+
+# 서비스 정의
+services:
+
+  # --- 데이터베이스 서비스 ---
+
+  # 스토어 서비스용 PostgreSQL
+  localy-store-postgre:
+    image: postgres:latest # PostgreSQL 이미지 사용
+    hostname: localy-store-postgre # 서비스 내부에서 사용할 호스트 이름 (선택 사항, 서비스 이름으로 접근 가능)
+    ports:
+      - "5434:5432" # 호스트 5434 포트를 컨테이너 내부 5432 포트에 매핑 (외부/로컬에서 DB 접근용)
+    environment:
+      POSTGRES_DB: storedb # 데이터베이스 이름
+      POSTGRES_USER: localyuser # 데이터베이스 사용자 이름
+      POSTGRES_PASSWORD: localypassword # 데이터베이스 비밀번호 (보안상 Secret 사용 권장)
+    volumes:
+      - store_data:/var/lib/postgresql/data # 데이터 지속성을 위한 볼륨
+    deploy:
+      replicas: 1 # 컨테이너 인스턴스 수
+      restart_policy: # 재시작 정책
+        condition: on-failure # 실패 시 재시작
+    networks:
+      - app-network # 서비스 통신 네트워크 연결
+
+  # 엣지 서비스용 Redis (세션 저장 등)
+  localy-edge-redis:
+    image: "redis:7.2" # 특정 버전 Redis 이미지 사용
+    hostname: localy-edge-redis
+    ports: # 엣지 서비스 내부에서만 접근하므로 호스트 포트 매핑 불필요
+      - 6379:6379 # <-- 이 라인은 제거하거나 주석 처리합니다.
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - app-network
+
+
+  # --- 관리 도구 ---
+
+  # PgAdmin (PostgreSQL 관리 도구)
+  localy-pgadmin:
+    image: dpage/pgadmin4:latest # PgAdmin 이미지
+    hostname: localy-pgadmin
+    ports:
+      - "5050:80" # 호스트 5050 포트를 컨테이너 내부 80 포트에 매핑
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@test.com # PgAdmin 로그인 이메일
+      PGADMIN_DEFAULT_PASSWORD: admin # PgAdmin 로그인 비밀번호
+      PGADMIN_LISTEN_PORT: 80 # PgAdmin이 리스닝할 포트 (컨테이너 내부)
+    depends_on:
+      - localy-store-postgre # 스토어 DB에 의존성 추가 (필요에 따라 다른 DB도 추가)
+      - localy-order-postgre
+      - localy-payment-postgre
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - app-network
+
+  # --- 인증/인가 시스템 ---
+
+  # Keycloak
+  localy-keycloak:
+    image: quay.io/keycloak/keycloak:24.0 # Keycloak 이미지
+    hostname: localy-keycloak
+    command: start-dev --import-realm # 개발 모드로 시작 및 realm import
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import # 로컬 keycloak 디렉토리의 realm 파일을 컨테이너로 마운트
+      - keycloak_data:/opt/keycloak/data # Keycloak 데이터 지속성을 위한 볼륨
+    environment:
+      KEYCLOAK_ADMIN: user # 관리자 사용자 이름
+      KEYCLOAK_ADMIN_PASSWORD: password # 관리자 비밀번호
+      # DB 설정 (PostgreSQL 사용 시) - 필요하다면 주석 해제하고 설정
+      # KC_DB: postgres
+      # KC_DB_URL: jdbc:postgresql://<DB 서비스 이름>:<DB 포트>/<DB 이름>
+      # KC_DB_USERNAME: <DB 사용자>
+      # KC_DB_PASSWORD: <DB 비밀번호>
+      # KC_HOSTNAME_STRICT: false # 개발 환경에서 hostname 검증 비활성화 (선택 사항)
+    ports:
+      - 8080:8080 # 호스트 8080 포트를 컨테이너 내부 8080 포트에 매핑
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - app-network
+
+  # --- 애플리케이션 서비스 (Spring Boot Microservices) ---
+
+  # 엣지 서비스 (API Gateway)
+#  edge-service:
+#    image: asfas244/edge-service:latest # Docker Hub 사용자 이미지 사용
+#    hostname: edge-service # 서비스 내부에서 사용할 호스트 이름 (선택 사항)
+#    ports:
+#      - "9000:9000" # 호스트 9000 포트를 컨테이너 내부 9000 포트에 매핑 (외부 접근용)
+#    environment:
+#      # 다른 서비스들의 주소 (Swarm 내부 DNS 사용)
+#      USER_SERVICE_URL: http://user-service:9001
+#      CART_SERVICE_URL: http://cart-service:8090
+#      ORDER_SERVICE_URL: http://order-service:8091
+#      PAYMENT_SERVICE_URL: http://payment-service:8092
+#      STORE_SERVICE_URL: http://store-service:8001
+#      # Keycloak 주소
+#      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: http://localy-keycloak:8080/realms/localy
+#      SPRING_SECURITY_OAUTH2_RESOURCE_SERVER_JWT_ISSUER_URI: http://localy-keycloak:8080/realms/localy
+#      # Redis 주소
+#      SPRING_REDIS_HOST: localy-edge-redis # 엣지 서비스용 Redis 서비스 이름 사용
+#      SPRING_REDIS_PORT: 6379 # Redis 기본 포트
+#      # BASE_URL 설정 (엣지 서비스가 외부에서 접근 가능한 주소)
+#      # Docker Swarm 환경에서는 공인 IP 또는 로드 밸런서 주소로 설정해야 할 수 있습니다.
+#      # 로컬 테스트 시에는 'http://localhost:9000' 또는 컨테이너 이름 'http://edge-service:9000' 사용
+#      BASE_URL: http://edge-service:9000 # 컨테이너 내부 통신용 또는 로컬 테스트용
+#    depends_on:
+#      # 엣지 서비스는 다른 서비스들이 준비된 후에 시작되는 것이 좋지만,
+#      # depends_on은 시작 순서만 보장하며 서비스의 '준비' 상태를 보장하지는 않습니다.
+#      # 실제 환경에서는 Readiness Probe 등을 사용하는 것이 좋습니다.
+#      - user-service
+#      - cart-service
+#      - payment-service
+#      - store-service
+#      - localy-keycloak
+#      - localy-edge-redis
+#    deploy:
+#      replicas: 1
+#      restart_policy:
+#        condition: on-failure
+#    networks:
+#      - app-network
+
+#  # 사용자 서비스
+#  user-service:
+#    image: asfas244/user-service:latest # Docker Hub 사용자 이미지 사용
+#    hostname: user-service
+#    ports:
+#      - "9001:9001" # 호스트 9001 포트를 컨테이너 내부 9001 포트에 매핑 (선택 사항)
+#    environment:
+#      KEYCLOAK_ISSUER_URI: http://localy-keycloak:8080/realms/localy
+#      KEYCLOAK_BASE_URL: http://localy-keycloak:8080/realms/localy
+#    # 사용자 서비스 환경 변수 (예: DB 연결 정보 - 사용자 서비스가 DB를 사용한다면 추가)
+#    # SPRING_R2DBC_URL: r2dbc:postgresql://<사용자 DB 서비스 이름>:5432/<사용자 DB 이름> # 예시
+#    # SPRING_R2DBC_USERNAME: <사용자 DB 사용자> # 예시
+#    # SPRING_R2DBC_PASSWORD: <사용자 DB 비밀번호> # 예시
+#    # Kafka 설정 (사용자 서비스가 Kafka를 사용한다면 추가)
+#    # SPRING_KAFKA_BOOTSTRAP_SERVERS: localy-kafka:29092 # 예시
+#    # depends_on: # 사용자 서비스가 DB 또는 Kafka를 사용한다면 의존성 추가
+#    #   - <사용자 DB 서비스 이름> # 예시
+#    #   - localy-kafka # 예시
+#    deploy:
+#      replicas: 1
+#      restart_policy:
+#        condition: on-failure
+#    networks:
+#      - app-network
+#
+#  # 스토어 서비스
+#  store-service:
+#    image: asfas244/store-service:latest # Docker Hub 사용자 이미지 사용
+#    hostname: store-service
+#    ports:
+#      - "8001:8001" # 호스트 8001 포트를 컨테이너 내부 8001 포트에 매핑 (선택 사항)
+#    environment:
+#      # 데이터베이스 연결 URL (스토어 DB 서비스 이름과 포트 사용)
+#      SPRING_R2DBC_URL: r2dbc:postgresql://localy-store-postgre:5432/storedb
+#      SPRING_R2DBC_USERNAME: localyuser
+#      SPRING_R2DBC_PASSWORD: localypassword
+#      # 로컬 이미지 저장 경로 (컨테이너 내부 경로) - 볼륨 마운트 경로와 일치해야 함
+#      APP_IMAGE_STORAGE_LOCATION: /opt/app/images # Dockerfile의 WORKDIR + 경로에 맞게 수정
+#      # 이미지 접근 URL 경로 (엣지 서비스에서 접근할 경로)
+#      APP_IMAGE_URL_PATH: /images/
+#      # Kafka 설정 (스토어 서비스가 Kafka를 사용한다면 추가)
+#      # SPRING_KAFKA_BOOTSTRAP_SERVERS: localy-kafka:29092 # 예시
+#    volumes:
+#      # 이미지 저장을 위한 볼륨 설정
+#      # 'store_images'라는 이름의 볼륨을 컨테이너의 이미지 저장 디렉토리에 마운트
+#      - store_images:/opt/app/images # Dockerfile의 WORKDIR + 경로에 맞게 수정
+#    depends_on:
+#      - localy-store-postgre # 스토어 서비스는 스토어 DB가 먼저 시작된 후에 시작
+#      # - localy-kafka # 스토어 서비스가 Kafka를 사용한다면 의존성 추가
+#    deploy:
+#      replicas: 1
+#      restart_policy:
+#        condition: on-failure
+#    networks:
+#      - app-network
+
+# 데이터 지속성을 위한 볼륨 정의
+volumes:
+  store_data: # 스토어 서비스용 DB 데이터
+  order_data: # 주문 서비스용 DB 데이터
+  payment_data: # 결제 서비스용 DB 데이터
+  keycloak_data: # Keycloak 데이터
+  store_images: # 스토어 서비스 이미지 파일 저장
+
+# 네트워크 정의 (서비스 간 통신을 위한 오버레이 네트워크)
+networks:
+  app-network: # 애플리케이션 서비스 및 인프라 서비스가 사용할 네트워크
+    driver: overlay # Docker Swarm 모드에서는 오버레이 네트워크 사용 권장
+    # attachable: true # 외부에서 이 네트워크에 연결할 수 있도록 허용 (선택 사항)

@@ -1,0 +1,61 @@
+name: Build and Push to Amazon ECR
+
+on:
+  push:
+    branches:
+      - main
+    # Localy-app 저장소 기준 경로 (app 코드들이 Localy 폴더 안에 있음)
+    paths:
+      - 'Localy/**'
+
+env:
+  AWS_REGION: ap-northeast-2
+  ROLE_TO_ASSUME: arn:aws:iam::533003975005:role/github-actions-ecr-push-role
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build & Push ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: 
+          - edge-service
+          - store-service
+          - cart-service
+          - order-service
+          - payment-service
+          - user-service
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ matrix.service }}
+          IMAGE_TAG: latest 
+        # Localy-app 저장소 기준 작업 디렉토리
+        working-directory: ./Localy/${{ matrix.service }}
+        run: |
+          echo "🔨 $ECR_REPOSITORY 이미지 빌드 시작..."
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          
+          echo "☁️ ECR로 푸시 중..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          
+          echo "✅ 푸시 완료!"

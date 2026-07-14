@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  #서비스
+  edge-service:
+    build:
+      context: ..../edge-service
+    ports:
+      - "9000:9000"
+    depends_on:
+      - localy-edge-redis
+    image: edge-service
+    container_name: localy-edge-service
+    networks:
+      - app-network
+    environment:
+      - BASE_URL=http://edge-service-container:9000
+      - SPRING_REDIS_HOST=localy-redis
+      - USER_SERVICE_URL=http://localy-user-service:9001
+      - SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI=http://keycloak-container:8080/realms/localy
+      - SPRING_SECURITY_OAUTH2_RESOURCE_SERVER_JWT_ISSUER_URI=http://localy-keycloak:8080/realms/localy
+
+  user-service:
+    build:
+      context: ../../user-service
+    ports:
+      - "9001:9001"
+    image: user-service
+    container_name: localy-user-service
+    networks:
+      - app-network
+
+
+  #데이터 베이스
+  localy-edge-redis:
+    image: "redis:7.2"
+    container_name: "localy-edge-redis"
+    ports:
+      - 6379:6379
+    networks:
+      - app-network
+
+  localy-store-postgre:
+    image: postgres:latest
+    container_name: localy-store-postgre
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: storedb # 사용할 데이터베이스 이름
+      POSTGRES_USER: localyuser # 사용할 사용자 이름
+      POSTGRES_PASSWORD: localypassword # 사용할 비밀번호
+    volumes:
+      - store_data:/var/lib/postgresql/data
+
+  #키클록
+  localy-keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: "localy-keycloak"
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import # Realm 초기화 파일
+      - keycloak-data:/opt/keycloak/data # Keycloak 데이터 저장
+    environment:
+      - KEYCLOAK_ADMIN=user
+      - KEYCLOAK_ADMIN_PASSWORD=password
+    ports:
+      - 8080:8080
+
+volumes:
+  keycloak-data:
+  postgres_data:
+  pgadmin_data:
+  store_data:
+networks:
+  app-network:
+    driver: bridge

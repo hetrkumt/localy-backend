@@ -1,0 +1,73 @@
+// android/app/build.gradle
+
+// 플러그인 선언부 (사용자님의 현재 구조 유지)
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// 로컬 프로퍼티에서 버전 정보 읽어오기 (표준 방식)
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {
+    flutterVersionCode = '1'
+}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {
+    flutterVersionName = '1.0'
+}
+
+android {
+    namespace = "com.example.localy_front_flutter"
+    // 플러그인 요구사항에 맞춰 compileSdk 버전을 35로 직접 지정합니다.
+    compileSdk = 35
+    ndkVersion = flutter.ndkVersion // 기존 flutter.ndkVersion 유지
+    ndkVersion "26.1.10909125"
+    compileOptions {
+        // Java 17을 사용하도록 소스 및 타겟 호환성 버전을 변경합니다.
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        // Kotlin의 JVM 타겟도 Java 17로 변경합니다.
+        jvmTarget = '17'
+    }
+
+    defaultConfig {
+        // TODO: 실제 앱의 고유한 Application ID로 변경하세요.
+        applicationId = "com.example.localy_front_flutter"
+        // flutter_naver_map 플러그인 요구사항에 맞춰 minSdkVersion을 23으로 직접 지정합니다.
+        minSdk = 23
+        // compileSdk와 맞추거나 최신 안정 버전으로 targetSdk를 직접 지정합니다.
+        targetSdk = 35
+        versionCode = flutter.versionCode.toInteger() // 기존 flutter.versionCode 사용
+        versionName = flutter.versionName             // 기존 flutter.versionName 사용
+    }
+
+    buildTypes {
+        release {
+            // TODO: 출시 빌드를 위한 서명 설정을 추가하세요.
+            // 현재는 디버그 키로 서명되어 `flutter run --release`가 동작합니다.
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    // 필요한 다른 의존성을 여기에 추가할 수 있습니다.
+}

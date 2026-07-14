@@ -1,0 +1,105 @@
+# 주문 서비스 application.yml
+
+server:
+  port: 8091 # Docker Compose에서 8091:8091로 매핑됨
+
+spring:
+  application:
+    name: order-service # 서비스 이름 지정
+
+  datasource:
+    # Docker 환경에서는 SPRING_DATASOURCE_URL 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 jdbc:postgresql://localhost:5432/orderdb 사용
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orderdb}
+    # Docker 환경에서는 SPRING_DATASOURCE_USERNAME 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 orderuser 사용
+    username: ${SPRING_DATASOURCE_USERNAME:orderuser}
+    # Docker 환경에서는 SPRING_DATASOURCE_PASSWORD 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 orderpass 사용
+    password: ${SPRING_DATASOURCE_PASSWORD:orderpass}
+    driver-class-name: org.postgresql.Driver
+
+  jpa: # JPA 설정 예시
+    hibernate:
+      ddl-auto: update # 테스트용. 운영 시에는 migrate 도구 사용 권장
+    show-sql: true # 개발/테스트 시 유용
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    # Docker 환경에서는 SPRING_KAFKA_BOOTSTRAP_SERVERS 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 localhost:9092 사용
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        # 이 두 설정을 전역 소비자 속성으로 옮깁니다.
+        spring.json.trusted.packages: com.localy.order_service.payment.result.consumer.dto # <--- 여기로 이동
+        spring.json.value.default.type: com.localy.order_service.payment.result.consumer.dto.PaymentResultEvent # <--- 여기로 이동
+
+  cloud:
+    stream:
+      kafka:
+        binder:
+          brokers: ${spring.kafka.bootstrap-servers}
+          producer:
+            configuration:
+              key.serializer: org.apache.kafka.common.serialization.StringSerializer
+              value.serializer: org.springframework.kafka.support.serializer.JsonSerializer
+              properties:
+                spring.json.add.type.headers: false # 타입 헤더 미포함 설정 유지
+              retries: 3
+              acks: all
+      bindings:
+        # 주문 생성 이벤트 발행
+        orderCreatedProducer-out-0:
+          destination: order-created
+          contentType: application/json
+
+        # 주문 승인 이벤트 발행 (유지)
+        orderApprovedProducer-out-0:
+          destination: order-approved
+          contentType: application/json
+
+        # 주문 거절 이벤트 발행 (유지)
+        orderRejectedProducer-out-0:
+          destination: order-rejected
+          contentType: application/json
+
+        # 결제 결과 이벤트 수신
+        paymentResultConsumer-in-0:
+          destination: payment-result
+          group: order-payment-result-group
+          consumer:
+            maxAttempts: 3
+            backOffInitialInterval: 1000
+            backOffMaxInterval: 10000
+            backOffMultiplier: 2.0
+            configuration:
+              auto.offset.reset: earliest
+              key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+              value.deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+              # 이전에 이곳에 있던 trusted.packages와 default.type은 이제 전역 설정으로 이동했습니다.
+      
+      # 폴링 간격 설정 (기본값: 1000ms)
+      poller:
+        fixed-delay: 1000
+        initial-delay: 0
+        max-messages-per-poll: 1
+    
+    function:
+      definition: orderCreatedProducer;orderApprovedProducer;orderRejectedProducer;paymentResultConsumer
+
+# 다른 서비스 주소 설정 (예: 결제 서비스)
+# Docker 환경에서는 PAYMENT_SERVICE_URL 환경 변수 값 사용
+# 로컬 환경에서는 기본값 http://localhost:8092 사용
+payment:
+  service:
+    url: ${PAYMENT_SERVICE_URL:http://localhost:8092}
+
+# 사용자 서비스 주소 (필요하다면 추가)
+# user:
+#   service:
+#     url: ${USER_SERVICE_URL:http://localhost:9001}

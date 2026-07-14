@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  localy-zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: localy-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_SERVERS: localy-zookeeper:2888:3888
+    restart: unless-stopped
+
+  localy-kafka: # 카프카 서비스 이름
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: localy-kafka
+    ports:
+      - "9092:9092" # 로컬에서 접속할 외부 포트
+    depends_on:
+      - localy-zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: localy-zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://localy-kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092 # 내부용 리스너 포트 29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localy-kafka:29092,PLAINTEXT_HOST://localhost:9092 # 내부용 localy-kafka:29092, 외부용 localhost:9092 광고
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_MESSAGE_MAX_BYTES: 2147483647
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      KAFKA_LOG4J_ROOT_LOGLEVEL: DEBUG
+    restart: unless-stopped

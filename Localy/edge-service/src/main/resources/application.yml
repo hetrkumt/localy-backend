@@ -1,0 +1,186 @@
+# edge-service application.yml
+
+server:
+  port: 9000 # 엣지 서비스는 9000 포트에서 실행
+  netty:
+    connection-timeout: 2s
+    idle-timeout: 15s
+  shutdown: graceful
+
+spring:
+  application:
+    name: edge-service
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  # Config Server 관련 설정을 제거합니다.
+  # import: "optional:configserver:"
+  cloud:
+    # Config Server 클라이언트 자동 구성을 비활성화합니다.
+    config:
+      enabled: false # <-- 이 라인을 추가합니다.
+      # uri: http://localhost:8888 # 이 설정들은 더 이상 사용되지 않습니다.
+      # request-connect-timeout: 5000 # 5s
+      # request-read-timeout: 5000 # 5s
+      # fail-fast: false # In production, set to true
+      # retry:
+      #   max-attempts: 6
+      #   initial-interval: 1000 # 1s
+      #   max-interval: 2000 # 2s
+      #   multiplier: 1.1
+    gateway:
+      httpclient:
+        connect-timeout: 5000 # 2s
+        response-timeout: 20s
+        pool:
+          type: elastic
+          max-idle-time: 15s
+          max-life-time: 60s
+      default-filters:
+        - SaveSession
+        # UserIdForwardingFilter를 사용하면 TokenRelay가 불필요할 수 있습니다.
+        # 여기서는 일단 유지하되, 필요에 따라 제거를 고려하세요.
+        - TokenRelay
+        #        - name: RequestRateLimiter
+        #          args:
+        #            redis-rate-limiter:
+        #              replenishRate: 10
+        #              burstCapacity: 20
+        #              requestedTokens: 1
+        - name: Retry
+          args:
+            retries: 3
+            methods: GET
+            series: SERVER_ERROR
+            exceptions: java.io.IOException, java.util.concurrent.TimeoutException
+            backoff:
+              firstBackoff: 50ms
+              maxBackOff: 500ms
+              factor: 2
+              basedOnPreviousValue: false
+      routes: # 개별 라우트 정의 목록
+        # 기존 User Service Route
+        - id: user-service-route # 라우트 고유 ID
+          uri: ${USER_SERVICE_URL:http://localhost:9001} # 요청을 포워딩할 대상 서비스 주소 (환경 변수 사용, 기본값은 localhost:9001)
+          predicates: # 어떤 요청이 이 라우트로 매칭될지 조건 정의
+            - Path=/api/users/** # /api/users/ 로 시작하는 모든 경로에 매칭
+          filters: # 이 라우트에만 적용될 필터
+            - name: CircuitBreaker # 서킷 브레이커 필터
+              args:
+                name: userCircuitBreaker
+                fallbackUri: forward:/user-fallback # 서킷 오픈 또는 예외 발생 시 포워딩될 경로
+            - RemoveRequestHeader=Cookie # 쿠키 헤더 제거 필터
+            # default-filters에 TokenRelay가 있으므로 여기서 중복 제거
+            # - TokenRelay # 이 라우트에도 토큰 릴레이 필터 적용 (기본 필터 외 개별 설정)
+
+        # Cart Service Route
+        - id: cart-service-route # 라우트 고유 ID
+          uri: ${CART_SERVICE_URL:http://localhost:8090} # 장바구니 서비스 주소 및 포트 (localhost:8090)
+          predicates: # 매칭 조건
+            - Path=/api/carts/** # /api/carts/ 로 시작하는 모든 경로에 매칭
+
+        # Order Service Route
+        - id: order-service-route # 라우트 고유 ID
+          uri: ${ORDER_SERVICE_URL:http://localhost:8091} # 주문 서비스 주소 및 포트 (localhost:8091)
+          predicates: # 매칭 조건
+            - Path=/api/orders/** # /api/orders/ 로 시작하는 모든 경로에 매칭
+
+        # Payment Service Route
+        - id: payment-service-route # 라우트 고유 ID
+          uri: ${PAYMENT_SERVICE_URL:http://localhost:8092} # 결제 서비스 주소 및 포트 (localhost:8092)
+          predicates: # 매칭 조건
+            - Path=/api/payments/** # /api/payments/ 로 시작하는 모든 경로에 매칭 (향후 결제 서비스 컨트롤러 경로에 맞게 수정 필요)
+
+        # --- 가게 서비스 (Store, Menu, Review) 라우트 ---ininlsvg
+        - id: store-service-route # 가게 서비스 라우트 고유 ID
+          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          predicates: # 매칭 조건
+            - Path=/api/stores/** # /api/stores/ 로 시작하는 모든 경로에 매칭
+          filters: # 필요시 가게 서비스 라우트에만 적용될 필터 추가
+          # default-filters에 TokenRelay가 있으므로 여기서 중복 제거
+          # - TokenRelay
+
+        - id: menu-service-route # 메뉴 서비스 라우트 고유 ID
+          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          predicates: # 매칭 조건
+            - Path=/api/menus/** # /api/menus/ 로 시작하는 모든 경로에 매칭
+          filters:
+          # default-filters에 TokenRelay가 있으므로 여기서 중복 제거
+          # - TokenRelay
+
+        - id: review-service-route # 리뷰 서비스 라우트 고유 ID
+          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          predicates: # 매칭 조건
+            - Path=/api/reviews/** # /api/reviews/ 로 시작하는 모든 경로에 매칭
+          filters:
+          # default-filters에 TokenRelay가 있으므로 여기서 중복 제거
+          # - TokenRelay
+        # -----------------------------------------------------
+        - id: image-serving-route
+          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          predicates:
+            - Path=/images/**
+          filters:
+            - RewritePath=/images/(?<segment>.*), /images/${segment}
+            - RemoveRequestHeader=Authorization
+
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: edge-service
+            client-secret: edge-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "${BASE_URL:http://localhost:9000}/login/oauth2/code/{registrationId}" # 엣지 서비스 포트 9000 유지
+            scope:
+              - openid
+              - profile
+              - email
+        provider:
+          keycloak:
+            issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
+
+  data:
+    redis:
+      connect-timeout: 5s
+      host: ${SPRING_REDIS_HOST:localhost} # 변경된 환경 변수 이름 사용
+      port: ${SPRING_REDIS_PORT:6379}     # 변경된 환경 변수 이름 사용
+
+  session:
+    store-type: redis
+    timeout: 10m
+    redis:
+      namespace: polar:edge
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 50
+        permittedNumberOfCallsInHalfOpenState: 5
+        failureRateThreshold: 70
+        waitDurationInOpenState: 30000
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+
+logging:
+  level:
+    # Spring Security 전반 로깅 레벨 조정
+    org.springframework.security: DEBUG
+    # OAuth2 Resource Server 관련 로깅 레벨 조정
+    org.springframework.security.oauth2: DEBUG
+
+    io.github.resilience4j: DEBUG
+    # Redis 연결 관련 로깅 레벨 추가 (필요시)
+    org.springframework.data.redis: DEBUG
+    io.lettuce.core: DEBUG
+
+# WebClientConfig에서 사용할 Keycloak 기본 URL 환경 변수 설정
+# 이 환경 변수도 기본값으로 localhost를 사용합니다.
+keycloak:
+  base-url: ${KEYCLOAK_BASE_URL:http://localhost:8080/realms/localy}

@@ -1,0 +1,66 @@
+server:
+  port: 8071
+  netty:
+    connection-timeout: 2s
+    idle-timeout: 15s
+  shutdown: graceful
+
+# application.yml 에 추가 또는 수정
+spring:
+  r2dbc:
+    # Docker 환경에서는 SPRING_R2DBC_URL 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 r2dbc:postgresql://localhost:5434/storedb 사용
+    url: ${SPRING_R2DBC_URL:r2dbc:postgresql://localhost:5434/storedb}
+    # Docker 환경에서는 SPRING_R2DBC_USERNAME 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 localyuser 사용
+    username: ${SPRING_R2DBC_USERNAME:localyuser}
+    # Docker 환경에서는 SPRING_R2DBC_PASSWORD 환경 변수 값 사용
+    # 로컬 환경에서는 기본값 localypassword 사용
+    password: ${SPRING_R2DBC_PASSWORD:localypassword}
+
+    # R2DBC 커넥션 풀 설정 (선택 사항, 권장)
+    pool:
+      max-size: 15
+      initial-size: 2
+      max-idle-time: 30m # 예: 30분
+      validation-query: SELECT 1 # 연결 유효성 확인 쿼리
+      # 기타 풀 설정 옵션은 Spring Boot 문서 참고
+
+  sql:
+    init:
+      enabled: true
+      platform: postgresql
+      schema-locations: classpath:schema.sql # 스키마 스크립트 파일 경로
+
+      continue-on-error: false
+      mode: always
+
+# [NEW] AWS S3 연동 설정 (K8s ESO ExternalSecret에서 주입됨)
+cloud:
+  aws:
+    s3:
+      bucket: ${AWS_S3_BUCKET_NAME}
+    region:
+      static: ${AWS_REGION:ap-northeast-2}
+
+# [NEW] SRE 기반 Actuator 보안 통제 및 K8s Health Probe 튜닝
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus" # [보안] 와일드카드(*) 원천 차단. 필수 메트릭만 개방
+  endpoint:
+    health:
+      probes:
+        enabled: true                     # K8s 전용 liveness/readiness 프로브 그룹 활성화
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+    # [핵심 방어 로직] Liveness 프로브 그룹 재정의
+    group:
+      liveness:
+        include: livenessState
+      readiness:
+        include: readinessState, db

@@ -1,0 +1,84 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.5'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.localy'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('otelVersion', "1.33.3")
+	set('springCloudVersion', "2021.0.9")
+	set('testcontainersVersion', "1.19.8")
+
+}
+
+
+dependencies {
+	// 기존 JPA 및 블록킹 JDBC 드라이버 제거
+	// implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // 이 줄을 제거하거나 주석 처리
+	// runtimeOnly 'org.postgresql:postgresql' // 이 줄을 제거하거나 주석 처리 (PostgreSQL 블록킹 드라이버)
+
+	// Reactive 데이터베이스 (R2DBC) 스타터 및 해당 Reactive 드라이버 추가
+	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc' // R2DBC 스타터 추가
+	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'org.postgresql:r2dbc-postgresql'
+	runtimeOnly 'org.springframework:spring-jdbc'
+	// 만약 MySQL 사용 시: runtimeOnly 'dev.miku:r2dbc-mysql'
+	// 만약 H2 사용 시: runtimeOnly 'io.r2dbc:r2dbc-h2'
+
+	// 기존 Spring Web 스타터 제거하고 WebFlux 사용 확정
+	// implementation 'org.springframework.boot:spring-boot-starter-web' // 이 줄을 제거하거나 주석 처리
+	implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebFlux 스타터 추가 (이미 Gateway 때문에 포함되어 있을 수도 있습니다.)
+
+	// [NEW] AWS SDK v2 for S3 (S3AsyncClient & S3Presigner 지원)
+	implementation platform('software.amazon.awssdk:bom:2.24.12')
+	implementation 'software.amazon.awssdk:s3'
+
+	implementation 'org.springframework.boot:spring-boot-starter-validation' // 유효성 검증 (유지)
+	implementation 'org.springframework.boot:spring-boot-starter-actuator' // 액추에이터 (유지)
+	implementation 'org.springframework.boot:spring-boot-devtools' // 개발 도구 (유지)
+
+
+	compileOnly 'org.projectlombok:lombok' // 롬복 (유지)
+	annotationProcessor 'org.projectlombok:lombok' // 롬복 (유지)
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-test' // 테스트 (유지)
+
+	testImplementation 'io.projectreactor:reactor-test' // Reactive 코드 테스트를 위한 유용한 라이브러리 추가
+	testImplementation 'org.mockito:mockito-core'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher' // 테스트 (유지)
+
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.testcontainers:testcontainers-bom:${testcontainersVersion}"
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+	}
+}
+
+
+
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

@@ -1,0 +1,35 @@
+// android/settings.gradle
+
+pluginManagement {
+    def flutterSdkPath = {
+        def properties = new Properties()
+        file("local.properties").withInputStream { properties.load(it) }
+        def flutterSdkPath = properties.getProperty("flutter.sdk")
+        assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+        return flutterSdkPath
+    }()
+
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    // Android Gradle Plugin 버전을 8.4.1로 업데이트합니다.
+    id "com.android.application" version "8.4.1" apply false
+    // Kotlin Gradle Plugin 버전을 1.9.22로 업데이트합니다. (AGP 8.4.1과 호환)
+    id "org.jetbrains.kotlin.android" version "1.9.22" apply false
+}
+
+// buildscript { // 이 부분은 주석 처리된 상태로 유지하는 것이 좋습니다.
+//    dependencies {
+//        classpath 'com.android.tools.build:gradle:8.4.1'
+//    }
+// }
+
+include ":app"

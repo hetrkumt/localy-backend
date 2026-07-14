@@ -1,0 +1,145 @@
+{
+  "realm": "localy",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "시스템 관리자 역할",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "localy"
+      },
+      {
+        "name": "market_owner",
+        "description": "가게 주인 역할",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "localy"
+      },
+      {
+        "name": "user",
+        "description": "일반 사용자 역할",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "localy"
+      }
+    ]
+  },
+  "defaultRoles": ["user"],
+  "clients": [
+    {
+      "clientId": "edge-service",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "edge-service-secret",
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "store_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "store_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "store_id",
+            "jsonType.label": "long"
+          }
+        },
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "foo",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "multivalued": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "System",
+      "lastName": "Admin",
+      "email": "admin@localy.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"],
+      "attributes": {}
+    },
+    {
+      "username": "market_owner1",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Market",
+      "lastName": "Owner",
+      "email": "market_owner1@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "market_owner1",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["market_owner"],
+      "attributes": {
+        "store_id": ["1"]
+      }
+    },
+    {
+      "username": "user1",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Normal",
+      "lastName": "User",
+      "email": "user1@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user1",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
+    }
+  ],
+  "browserFlow": "browser",
+  "registrationFlow": "registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "attributes": {
+    "userProfileEnabled": true
+  }
+} 
