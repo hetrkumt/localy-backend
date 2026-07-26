@@ -34,6 +34,9 @@ dependencies {
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-hibernate6'
 
+	// AWS MSK IAM Auth (Zero-Trust Kafka)
+	implementation 'software.amazon.msk:aws-msk-iam-auth:2.2.0'
+
 	compileOnly 'org.projectlombok:lombok'
 
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
@@ -55,4 +58,16 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// --- [Phase 1: Observability Injection] ---
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    // --- [Phase 1: AWS IAM DB Auth & Kafka] ---
+    implementation 'software.amazon.jdbc:aws-advanced-jdbc-wrapper:2.3.2'
+    implementation 'net.ttddyy.observation:datasource-micrometer-spring-boot:1.0.1'
+    implementation 'org.springframework.kafka:spring-kafka'
 }

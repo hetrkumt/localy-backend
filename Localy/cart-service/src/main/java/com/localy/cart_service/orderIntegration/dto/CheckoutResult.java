@@ -1,20 +1,19 @@
 package com.localy.cart_service.orderIntegration.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-
 
 @Getter
-@RequiredArgsConstructor
+@AllArgsConstructor
 public class CheckoutResult {
-    private final boolean success;
-    private final String createdOrderJson; // 성공 시 Order 객체의 JSON 문자열
-    private final String errorMessage;
+    private boolean success;
+    private String message;
 
-    public static CheckoutResult success(String createdOrderJson) {
-        return new CheckoutResult(true, createdOrderJson, null);
+    public static CheckoutResult success(String message) {
+        return new CheckoutResult(true, message);
     }
+
     public static CheckoutResult failure(String errorMessage) {
-        return new CheckoutResult(false, null, errorMessage);
+        return new CheckoutResult(false, errorMessage);
     }
 }

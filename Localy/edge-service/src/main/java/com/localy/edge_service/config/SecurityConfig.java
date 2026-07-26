@@ -9,6 +9,10 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import com.localy.edge_service.config.security.CookieServerSecurityContextRepository;
+import com.localy.edge_service.config.security.CookieServerAuthorizationRequestRepository;
+import com.localy.edge_service.config.security.CookieServerOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
 
 @Configuration
 public class SecurityConfig {
@@ -31,15 +35,18 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    public SecurityWebFilterChain securityWebFilterChain(
+            ServerHttpSecurity http,
+            CookieServerSecurityContextRepository securityContextRepository,
+            CookieServerAuthorizationRequestRepository authorizationRequestRepository,
+            CookieServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
         return http
                 // CSRF 비활성화 (RESTful API에서는 일반적으로 비활성화)
                 .csrf(csrf -> csrf.disable())
+                // 쿠키 기반 Stateless 세션 저장소 주입
+                .securityContextRepository(securityContextRepository)
                 // 요청 경로별 접근 권한 설정
                 .authorizeExchange(exchange -> exchange
-                        // 기존 허용 경로
-                        .pathMatchers("/api/auth/**", "/api/token/**").permitAll()
-
                         // 회원가입 엔드포인트 허용 - 인증 없이 접근 가능하도록 설정
                         .pathMatchers(HttpMethod.POST, "/api/users").permitAll() // <-- 이 라인을 추가합니다.
 
@@ -70,6 +77,11 @@ public class SecurityConfig {
 
                         // 나머지 모든 요청 (주로 POST, PUT, DELETE 및 위에 명시되지 않은 GET)은 인증 필요
                         .anyExchange().authenticated()
+                )
+                // OAuth2 로그인 (BFF 패턴) 활성화 및 커스텀 요청/클라이언트 저장소 주입
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationRequestRepository(authorizationRequestRepository)
+                        .authorizedClientRepository(authorizedClientRepository)
                 )
                 // OAuth 2.0 Resource Server 활성화 및 JWT 기본 설정 사용
                 // 엣지 서비스가 JWT 토큰을 받아 인증 처리함을 의미

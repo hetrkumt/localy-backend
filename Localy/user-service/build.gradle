@@ -51,3 +51,10 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// --- [Phase 1: Observability Injection] ---
+dependencies {
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+}

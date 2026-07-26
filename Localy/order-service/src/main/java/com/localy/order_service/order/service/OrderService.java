@@ -7,10 +7,13 @@ import com.localy.order_service.order.domain.OrderStatus;
 import com.localy.order_service.order.dto.CartItemDto;
 import com.localy.order_service.order.dto.CreateOrderRequest;
 import com.localy.order_service.order.dto.OrderApprovalRequest;
-import com.localy.order_service.order.message.OrderMessage; // Kafka 메시지 관련 클래스 (필요시 사용)
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.localy.order_service.order.domain.OutboxEvent;
+import com.localy.order_service.order.repository.OutboxEventRepository;
+import com.localy.order_service.order.message.OrderMessage; // Kafka 메시지 관련 클래스
 import com.localy.order_service.order.repository.OrderRepository;
-// OrderLineItemRepository는 Order의 CascadeType.ALL로 인해 직접적인 save 호출이 필요 없을 수 있음
-// import com.localy.order_service.order.repository.OrderLineItemRepository;
+import org.springframework.context.ApplicationEventPublisher;
+import com.localy.order_service.order.event.OutboxSavedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,8 +31,10 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private final OrderRepository orderRepository;
-    // private final OrderLineItemRepository orderLineItemRepository; // Order에 Cascade 설정 시 불필요할 수 있음
-    private final OrderMessage orderMessage; // Kafka 메시지 발행용
+    private final OutboxEventRepository outboxEventRepository;
+    private final ObjectMapper objectMapper;
+    private final OrderMessage orderMessage; // 유지 (스케줄러 또는 다른 곳에서 사용 가능성 대비)
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public Order placeOrder(CreateOrderRequest createOrderRequest, String userId) { // userId 파라미터 추가
         System.out.println(String.format("--- OrderService: placeOrder 시작 - UserID from Header: %s, StoreID: %s ---", userId, createOrderRequest.getStoreId()));
@@ -85,10 +90,25 @@ public class OrderService {
         Order savedOrder = orderRepository.save(order);
         System.out.println(String.format("--- OrderService: 주문 생성 및 항목 저장 완료 (OrderID: %d) ---", savedOrder.getOrderId()));
 
-        // Kafka 이벤트 발행
-        System.out.println("OrderService: publishOrderCreatedEvent 호출 시도 - Order ID: " + savedOrder.getOrderId());
-        orderMessage.publishOrderCreatedEvent(savedOrder); // Kafka 메시지 발행
-        System.out.println("OrderService: publishOrderCreatedEvent 호출 완료");
+        // Transactional Outbox Pattern: Kafka 직접 발행 대신 Outbox 테이블에 저장
+        System.out.println("OrderService: OutboxEvent 저장 시도 - Order ID: " + savedOrder.getOrderId());
+        try {
+            String payload = objectMapper.writeValueAsString(savedOrder);
+            OutboxEvent outboxEvent = OutboxEvent.builder()
+                    .aggregateType("order")
+                    .aggregateId(String.valueOf(savedOrder.getOrderId()))
+                    .eventType("OrderCreated")
+                    .payload(payload)
+                    .createdAt(LocalDateTime.now())
+                    .processed(false)
+                    .build();
+            outboxEventRepository.save(outboxEvent);
+            System.out.println("OrderService: OutboxEvent 저장 완료");
+            applicationEventPublisher.publishEvent(new OutboxSavedEvent(outboxEvent.getId()));
+        } catch (Exception e) {
+            System.err.println("OrderService: OutboxEvent 직렬화 실패 - " + e.getMessage());
+            throw new RuntimeException("주문 데이터를 Outbox 이벤트로 변환하는 데 실패했습니다.", e);
+        }
 
         return savedOrder;
     }
@@ -151,15 +171,28 @@ public class OrderService {
         if (approvalRequest.isApproved()) {
             order.setOrderStatus(OrderStatus.APPROVED.name());
             System.out.println("--- OrderService: 주문 승인 처리 완료 ---");
-            
-            // Kafka 이벤트 발행
-            orderMessage.publishOrderApprovedEvent(order);
         } else {
             order.setOrderStatus(OrderStatus.REJECTED.name());
             System.out.println("--- OrderService: 주문 거절 처리 완료 ---");
-            
-            // Kafka 이벤트 발행
-            orderMessage.publishOrderRejectedEvent(order);
+        }
+        
+        // Outbox에 승인/거절 이벤트 저장
+        try {
+            String payload = objectMapper.writeValueAsString(order);
+            String eventType = approvalRequest.isApproved() ? "OrderApproved" : "OrderRejected";
+            OutboxEvent outboxEvent = OutboxEvent.builder()
+                    .aggregateType("order")
+                    .aggregateId(String.valueOf(order.getOrderId()))
+                    .eventType(eventType)
+                    .payload(payload)
+                    .createdAt(LocalDateTime.now())
+                    .processed(false)
+                    .build();
+            outboxEventRepository.save(outboxEvent);
+            System.out.println("--- OrderService: OutboxEvent 저장 완료 (" + eventType + ") ---");
+            applicationEventPublisher.publishEvent(new OutboxSavedEvent(outboxEvent.getId()));
+        } catch (Exception e) {
+            throw new RuntimeException("결재/거절 데이터를 Outbox 이벤트로 변환하는 데 실패했습니다.", e);
         }
 
         return orderRepository.save(order);

@@ -3,11 +3,12 @@ server:
   shutdown: graceful
 
 spring:
+  config:
+    import: "optional:configtree:/workspace/configtree/"
   application:
     name: user-service
   lifecycle:
-    timeout-per-shutdown-phase: 30s
-
+    timeout-per-shutdown-phase: 45s
   security:
     oauth2:
       client:
@@ -27,6 +28,10 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
 
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
 keycloak:
   base-url: ${KEYCLOAK_BASE_URL:http://localhost:8080}
   realm: localy
@@ -35,10 +40,12 @@ keycloak:
     client-secret: ${KEYCLOAK_CLIENT_SECRET:user-secret}
 
 management:
+  server:
+    port: 9090
   endpoints:
     web:
       exposure:
-        include: health, info, prometheus
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
@@ -49,6 +56,17 @@ management:
       enabled: true
     ping:
       enabled: false
+  tracing:
+    propagation:
+      type: W3C
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: "http://${HOST_IP:otel-agent-opentelemetry-collector.platform.svc.cluster.local}:4318/v1/traces"
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 resilience4j:
   circuitbreaker:

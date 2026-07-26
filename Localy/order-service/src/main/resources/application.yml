@@ -2,23 +2,21 @@
 
 server:
   port: 8091 # Docker Compose에서 8091:8091로 매핑됨
+  shutdown: graceful
 
 spring:
   application:
     name: order-service # 서비스 이름 지정
-
+  lifecycle:
+    timeout-per-shutdown-phase: 45s
   datasource:
-    # Docker 환경에서는 SPRING_DATASOURCE_URL 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 jdbc:postgresql://localhost:5432/orderdb 사용
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orderdb}
-    # Docker 환경에서는 SPRING_DATASOURCE_USERNAME 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 orderuser 사용
     username: ${SPRING_DATASOURCE_USERNAME:orderuser}
-    # Docker 환경에서는 SPRING_DATASOURCE_PASSWORD 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 orderpass 사용
     password: ${SPRING_DATASOURCE_PASSWORD:orderpass}
     driver-class-name: org.postgresql.Driver
-
+    hikari:
+      max-lifetime: 600000
+      maximum-pool-size: 10
   jpa: # JPA 설정 예시
     hibernate:
       ddl-auto: update # 테스트용. 운영 시에는 migrate 도구 사용 권장
@@ -26,7 +24,6 @@ spring:
     properties:
       hibernate:
         format_sql: true
-
   kafka:
     # Docker 환경에서는 SPRING_KAFKA_BOOTSTRAP_SERVERS 환경 변수 값 사용
     # 로컬 환경에서는 기본값 localhost:9092 사용
@@ -38,7 +35,11 @@ spring:
         # 이 두 설정을 전역 소비자 속성으로 옮깁니다.
         spring.json.trusted.packages: com.localy.order_service.payment.result.consumer.dto # <--- 여기로 이동
         spring.json.value.default.type: com.localy.order_service.payment.result.consumer.dto.PaymentResultEvent # <--- 여기로 이동
-
+        spring.json.use.type.headers: false
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
   cloud:
     stream:
       kafka:
@@ -68,38 +69,46 @@ spring:
           destination: order-rejected
           contentType: application/json
 
-        # 결제 결과 이벤트 수신
-        paymentResultConsumer-in-0:
-          destination: payment-result
-          group: order-payment-result-group
-          consumer:
-            maxAttempts: 3
-            backOffInitialInterval: 1000
-            backOffMaxInterval: 10000
-            backOffMultiplier: 2.0
-            configuration:
-              auto.offset.reset: earliest
-              key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-              value.deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-              # 이전에 이곳에 있던 trusted.packages와 default.type은 이제 전역 설정으로 이동했습니다.
-      
       # 폴링 간격 설정 (기본값: 1000ms)
       poller:
         fixed-delay: 1000
         initial-delay: 0
         max-messages-per-poll: 1
-    
+
     function:
-      definition: orderCreatedProducer;orderApprovedProducer;orderRejectedProducer;paymentResultConsumer
+      definition: orderCreatedProducer;orderApprovedProducer;orderRejectedProducer
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
 
 # 다른 서비스 주소 설정 (예: 결제 서비스)
 # Docker 환경에서는 PAYMENT_SERVICE_URL 환경 변수 값 사용
 # 로컬 환경에서는 기본값 http://localhost:8092 사용
 payment:
   service:
-    url: ${PAYMENT_SERVICE_URL:http://localhost:8092}
+    url: ${PAYMENT_SERVICE_URL:http://payment-service.payment-service.svc.cluster.local:80}
 
 # 사용자 서비스 주소 (필요하다면 추가)
 # user:
 #   service:
 #     url: ${USER_SERVICE_URL:http://localhost:9001}
+
+management:
+  server:
+    port: 9090
+  tracing:
+    propagation:
+      type: W3C
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: "http://${HOST_IP:otel-agent-opentelemetry-collector.platform.svc.cluster.local}:4318/v1/traces"
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

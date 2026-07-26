@@ -11,9 +11,7 @@ spring:
   application:
     name: edge-service
   lifecycle:
-    timeout-per-shutdown-phase: 15s
-  # Config Server 관련 설정을 제거합니다.
-  # import: "optional:configserver:"
+    timeout-per-shutdown-phase: 45s
   cloud:
     # Config Server 클라이언트 자동 구성을 비활성화합니다.
     config:
@@ -40,12 +38,13 @@ spring:
         # UserIdForwardingFilter를 사용하면 TokenRelay가 불필요할 수 있습니다.
         # 여기서는 일단 유지하되, 필요에 따라 제거를 고려하세요.
         - TokenRelay
-        #        - name: RequestRateLimiter
-        #          args:
-        #            redis-rate-limiter:
-        #              replenishRate: 10
-        #              burstCapacity: 20
-        #              requestedTokens: 1
+        - name: Resilience4jRateLimiter
+          args:
+            name: default
+        - name: CircuitBreaker
+          args:
+            name: globalCircuitBreaker
+            fallbackUri: forward:/global-fallback
         - name: Retry
           args:
             retries: 3
@@ -60,39 +59,35 @@ spring:
       routes: # 개별 라우트 정의 목록
         # 기존 User Service Route
         - id: user-service-route # 라우트 고유 ID
-          uri: ${USER_SERVICE_URL:http://localhost:9001} # 요청을 포워딩할 대상 서비스 주소 (환경 변수 사용, 기본값은 localhost:9001)
+          uri: ${USER_SERVICE_URL:http://user-service.user-service.svc.cluster.local:80} # 요청을 포워딩할 대상 서비스 주소 (환경 변수 사용, 기본값은 FQDN)
           predicates: # 어떤 요청이 이 라우트로 매칭될지 조건 정의
             - Path=/api/users/** # /api/users/ 로 시작하는 모든 경로에 매칭
           filters: # 이 라우트에만 적용될 필터
-            - name: CircuitBreaker # 서킷 브레이커 필터
-              args:
-                name: userCircuitBreaker
-                fallbackUri: forward:/user-fallback # 서킷 오픈 또는 예외 발생 시 포워딩될 경로
             - RemoveRequestHeader=Cookie # 쿠키 헤더 제거 필터
             # default-filters에 TokenRelay가 있으므로 여기서 중복 제거
             # - TokenRelay # 이 라우트에도 토큰 릴레이 필터 적용 (기본 필터 외 개별 설정)
 
         # Cart Service Route
         - id: cart-service-route # 라우트 고유 ID
-          uri: ${CART_SERVICE_URL:http://localhost:8090} # 장바구니 서비스 주소 및 포트 (localhost:8090)
+          uri: ${CART_SERVICE_URL:http://cart-service.cart-service.svc.cluster.local:80} # 장바구니 서비스 주소 및 포트 (FQDN)
           predicates: # 매칭 조건
             - Path=/api/carts/** # /api/carts/ 로 시작하는 모든 경로에 매칭
 
         # Order Service Route
         - id: order-service-route # 라우트 고유 ID
-          uri: ${ORDER_SERVICE_URL:http://localhost:8091} # 주문 서비스 주소 및 포트 (localhost:8091)
+          uri: ${ORDER_SERVICE_URL:http://order-service.order-service.svc.cluster.local:80} # 주문 서비스 주소 및 포트 (FQDN)
           predicates: # 매칭 조건
             - Path=/api/orders/** # /api/orders/ 로 시작하는 모든 경로에 매칭
 
         # Payment Service Route
         - id: payment-service-route # 라우트 고유 ID
-          uri: ${PAYMENT_SERVICE_URL:http://localhost:8092} # 결제 서비스 주소 및 포트 (localhost:8092)
+          uri: ${PAYMENT_SERVICE_URL:http://payment-service.payment-service.svc.cluster.local:80} # 결제 서비스 주소 및 포트 (FQDN)
           predicates: # 매칭 조건
             - Path=/api/payments/** # /api/payments/ 로 시작하는 모든 경로에 매칭 (향후 결제 서비스 컨트롤러 경로에 맞게 수정 필요)
 
-        # --- 가게 서비스 (Store, Menu, Review) 라우트 ---ininlsvg
+        # --- 가게 서비스 (Store, Menu, Review) 라우트 ---
         - id: store-service-route # 가게 서비스 라우트 고유 ID
-          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          uri: ${STORE_SERVICE_URL:http://store-service.store-service.svc.cluster.local:80}
           predicates: # 매칭 조건
             - Path=/api/stores/** # /api/stores/ 로 시작하는 모든 경로에 매칭
           filters: # 필요시 가게 서비스 라우트에만 적용될 필터 추가
@@ -100,7 +95,7 @@ spring:
           # - TokenRelay
 
         - id: menu-service-route # 메뉴 서비스 라우트 고유 ID
-          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          uri: ${STORE_SERVICE_URL:http://store-service.store-service.svc.cluster.local:80}
           predicates: # 매칭 조건
             - Path=/api/menus/** # /api/menus/ 로 시작하는 모든 경로에 매칭
           filters:
@@ -108,7 +103,7 @@ spring:
           # - TokenRelay
 
         - id: review-service-route # 리뷰 서비스 라우트 고유 ID
-          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          uri: ${STORE_SERVICE_URL:http://store-service.store-service.svc.cluster.local:80}
           predicates: # 매칭 조건
             - Path=/api/reviews/** # /api/reviews/ 로 시작하는 모든 경로에 매칭
           filters:
@@ -116,7 +111,7 @@ spring:
           # - TokenRelay
         # -----------------------------------------------------
         - id: image-serving-route
-          uri: ${STORE_SERVICE_URL:http://localhost:8071}
+          uri: ${STORE_SERVICE_URL:http://store-service.store-service.svc.cluster.local:80}
           predicates:
             - Path=/images/**
           filters:
@@ -143,18 +138,6 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
 
-  data:
-    redis:
-      connect-timeout: 5s
-      host: ${SPRING_REDIS_HOST:localhost} # 변경된 환경 변수 이름 사용
-      port: ${SPRING_REDIS_PORT:6379}     # 변경된 환경 변수 이름 사용
-
-  session:
-    store-type: redis
-    timeout: 10m
-    redis:
-      namespace: polar:edge
-
 resilience4j:
   circuitbreaker:
     configs:
@@ -166,9 +149,11 @@ resilience4j:
   timelimiter:
     configs:
       default:
-        timeoutDuration: 5s
+        timeoutDuration: 2s
 
 logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
   level:
     # Spring Security 전반 로깅 레벨 조정
     org.springframework.security: DEBUG
@@ -176,11 +161,27 @@ logging:
     org.springframework.security.oauth2: DEBUG
 
     io.github.resilience4j: DEBUG
-    # Redis 연결 관련 로깅 레벨 추가 (필요시)
-    org.springframework.data.redis: DEBUG
-    io.lettuce.core: DEBUG
 
 # WebClientConfig에서 사용할 Keycloak 기본 URL 환경 변수 설정
 # 이 환경 변수도 기본값으로 localhost를 사용합니다.
 keycloak:
   base-url: ${KEYCLOAK_BASE_URL:http://localhost:8080/realms/localy}
+
+management:
+  server:
+    port: 9090
+  tracing:
+    propagation:
+      type: W3C
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: "http://${HOST_IP:otel-agent-opentelemetry-collector.platform.svc.cluster.local}:4318/v1/traces"
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

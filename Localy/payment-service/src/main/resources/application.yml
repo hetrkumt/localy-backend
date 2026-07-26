@@ -1,79 +1,93 @@
-# 결제 서비스 application.yml
+# payment-service application.yml
 
 server:
-  port: 8092 # Docker Compose에서 8092:8092로 매핑됨
-  shutdown: graceful # [NEW] K8s 생존력 패치 대응
+  port: 8092
+  shutdown: graceful
 
 spring:
+  config:
+    import: "optional:configtree:/workspace/configtree/"
   lifecycle:
-    timeout-per-shutdown-phase: 30s # [NEW] 진행 중인 스레드 대기 시간
+    timeout-per-shutdown-phase: 45s
   application:
-    name: payment-service # 서비스 이름 지정
-
+    name: payment-service
   datasource:
-    # Docker 환경에서는 SPRING_DATASOURCE_URL 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 jdbc:postgresql://localhost:5433/paymentdb 사용
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/paymentdb}
-    # Docker 환경에서는 SPRING_DATASOURCE_USERNAME 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 paymentuser 사용
     username: ${SPRING_DATASOURCE_USERNAME:paymentuser}
-    # Docker 환경에서는 SPRING_DATASOURCE_PASSWORD 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 paymentpass 사용
     password: ${SPRING_DATASOURCE_PASSWORD:paymentpass}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 5 # [NEW] KEDA 스케일아웃 대비 DB 커넥션 폭증 방어 (최대 5개로 제한)
-
-  jpa: # JPA 설정 예시
+      max-lifetime: 600000
+      maximum-pool-size: 5
+  jpa:
     hibernate:
-      ddl-auto: update # 테스트용. 운영 시에는 migrate 도구 사용 권장
-    show-sql: true # 개발/테스트 시 유용
+      ddl-auto: update
+    show-sql: true
     properties:
       hibernate:
         format_sql: true
-
   kafka:
-    # Docker 환경에서는 SPRING_KAFKA_BOOTSTRAP_SERVERS 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 localhost:9092 사용
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.localy.payment_service.order.consumer.dto
+        spring.json.value.default.type: com.localy.payment_service.order.consumer.dto.OrderApprovedEvent
+        spring.json.use.type.headers: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
   cloud:
     stream:
+      bindings:
+        paymentResultProducer-out-0:
+          destination: payment-result
+          contentType: application/json
+          producer:
+            useNativeEncoding: true
       kafka:
         binder:
-          # Kafka 바인더 브로커 주소는 spring.kafka.bootstrap-servers 속성 값을 참조
           brokers: ${spring.kafka.bootstrap-servers}
-          # [NEW] MSK IAM Auth Zero-Trust 보안 통신 설정 (환경 변수 스위치)
           configuration:
             security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
             sasl.mechanism: ${KAFKA_SASL_MECHANISM:}
             sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}
             sasl.client.callback.handler.class: ${KAFKA_SASL_CALLBACK_HANDLER:}
         bindings:
-          orderApprovedConsumer-in-0:
-            consumer:
-              enableDlq: true                 # [NEW] 네이티브 DLQ 활성화
-              dlqName: order-approved-dlq     # [NEW] 데드레터 큐 토픽명 지정
-      bindings:
-        orderApprovedConsumer-in-0: # 입력 바인딩 이름 변경
-          destination: order-approved # 주문 서비스에서 발행하는 토픽 이름과 동일하게 설정
-          group: payment-approved-group # 컨슈머 그룹 이름 변경 (중요: 각 서비스 인스턴스가 메시지를 한 번씩만 처리하도록 그룹 설정)
-          consumer:
-            maxAttempts: 3                    # [NEW] 3회 재시도 후 DLQ로 라우팅
-            auto.offset.reset: earliest
-            key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
-            value.deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-            # OrderApprovedEvent 패키지 경로를 결제 서비스의 DTO 경로로 변경
-            spring.json.trusted.packages: com.localy.payment_service.order.consumer.dto
-            # --- 추가된 설정 ---
-            spring.json.value.default.type: com.localy.payment_service.order.consumer.dto.OrderApprovedEvent # <--- 이 부분을 추가했습니다.
-            # ---------------
-        paymentResultProducer-out-0:
-          destination: payment-result # 발행할 카프카 토픽 이름 (주문 서비스의 Input destination과 일치해야 함)
-          contentType: application/json # 메시지 컨텐츠 타입 (직렬화 방식과 일치)
-          # kafka.producer.properties: # 추가 Kafka 프로듀서 속성
-          #   retries: 10 # 발행 실패 시 재시도 횟수
-
-    # === 사용할 함수형 빈 명시적 지정 (결제 서비스의 빈 이름) ===
+          paymentResultProducer-out-0:
+            producer:
+              configuration:
+                key.serializer: org.apache.kafka.common.serialization.StringSerializer
+                value.serializer: org.springframework.kafka.support.serializer.JsonSerializer
+                spring.json.add.type.headers: false
+    # orderApproved is consumed via @KafkaListener (not Stream function)
     function:
-      definition: orderApprovedConsumer;paymentResultProducer # <-- 결제 서비스의 빈 이름 변경
+      definition: paymentResultProducer
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
+management:
+  server:
+    port: 9090
+  tracing:
+    propagation:
+      type: W3C
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: "http://${HOST_IP:otel-agent-opentelemetry-collector.platform.svc.cluster.local}:4318/v1/traces"
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

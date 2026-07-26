@@ -1,15 +1,23 @@
-# 장바구니 서비스 application.yml
+# 장바구니 서비스 application.yml (단일 통합본)
 
 server:
-  port: 8090 # Docker Compose에서 8090:8090으로 매핑됨
+  port: 8090 # Docker Compose 매핑 포트
+  shutdown: graceful # [Phase 1] 우아한 종료 활성화
 
 spring:
+  config:
+    import: "optional:configtree:/workspace/configtree/"
   application:
-    name: cart-service # 서비스 이름 지정 (선택 사항이지만 유용)
-
+    name: cart-service # 서비스 이름 명시 (application.properties 대체)
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  lifecycle:
+    timeout-per-shutdown-phase: 45s # [Phase 1] 종료 유예 시간 설정
   redis:
     # Docker 환경에서는 SPRING_DATA_REDIS_HOST 환경 변수 값 사용
-    # 로컬 환경에서는 기본값 localhost 사용
     host: ${SPRING_DATA_REDIS_HOST:localhost}
     port: ${SPRING_DATA_REDIS_PORT:6379}
     password: ${SPRING_DATA_REDIS_PASSWORD:}
@@ -21,18 +29,40 @@ spring:
         min-idle: 2
         max-wait: 2000ms
 
-
-
-    # function:
-    #   definition: # 사용할 함수형 빈 이름 명시 (필요하다면 추가)
-
 logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
   level:
-    com.localy.cart_service.orderIntegration.config.client: DEBUG # 예시 로깅 레벨
+    com.localy.cart_service.orderIntegration.config.client: DEBUG
 
-# 다른 서비스 주소 설정 (예: 주문 서비스)
-# Docker 환경에서는 ORDER_SERVICE_URL 환경 변수 값 사용
-# 로컬 환경에서는 기본값 http://localhost:8091 사용
+# 다른 서비스 주소 설정 (※ Phase 2 비동기 전환 시 적출될 동기식 Feign 호출 타겟)
 order:
   service:
-    url: ${ORDER_SERVICE_URL:http://localhost:8091}
+    url: ${ORDER_SERVICE_URL:http://order-service.order-service.svc.cluster.local:80}
+
+# --- [Phase 1: 관측성 및 EKS 헬스체크 정밀 튜닝] ---
+management:
+  server:
+    port: 9090
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus # 필수 엔드포인트만 노출 (보안 유지)
+  endpoint:
+    health:
+      probes:
+        enabled: true # [핵심] K8s Liveness/Readiness 전용 네이티브 프로브 활성화
+  health:
+    redis:
+      enabled: false  # [핵심] 일시적 DB 지연으로 인한 파드 연쇄 사망(Thundering Herd) 차단
+  tracing:
+    propagation:
+      type: W3C
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: "http://${HOST_IP:otel-agent-opentelemetry-collector.platform.svc.cluster.local}:4318/v1/traces"
+  metrics:
+    tags:
+      application: ${spring.application.name} # [핵심] Prometheus 중앙 집중 모니터링용 서비스 식별자 자동 주입

@@ -1,101 +1,87 @@
 package com.localy.cart_service.orderIntegration.service;
 
-import com.localy.cart_service.cart.repository.CartRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.localy.cart_service.cart.domain.Cart;
-import com.localy.cart_service.orderIntegration.config.client.OrderServiceClient;
+import com.localy.cart_service.cart.repository.CartRepository;
 import com.localy.cart_service.orderIntegration.dto.CartItemDto;
 import com.localy.cart_service.orderIntegration.dto.CheckoutResult;
-import com.localy.cart_service.orderIntegration.dto.CreateOrderRequest;
-import feign.FeignException;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderCheckoutService {
 
-    private static final Logger log = LoggerFactory.getLogger(OrderCheckoutService.class);
-
     private final CartRepository cartRepository;
-    private final OrderServiceClient orderServiceClient;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
 
-    public CheckoutResult checkout(String userId) { // 이 userId는 OrderCheckoutController에서 헤더로부터 받은 값
-        log.info("Checkout 시도: 사용자 ID={}", userId);
+    // Redis Stream Outbox Name
+    private static final String OUTBOX_STREAM_KEY = "cart-checkout-outbox-stream";
 
+    // [핵심] Lua Script: 장바구니 비우기와 Stream Event 발행을 원자적으로 묶음
+    private static final String CHECKOUT_LUA_SCRIPT =
+            "local cartKey = KEYS[1] \n" +
+            "local streamKey = KEYS[2] \n" +
+            "local payload = ARGV[1] \n" +
+            "local cartExists = redis.call('EXISTS', cartKey) \n" +
+            "if cartExists == 1 then \n" +
+            "  redis.call('DEL', cartKey) \n" +
+            "  redis.call('XADD', streamKey, '*', 'eventType', 'CheckoutInitiated', 'payload', payload) \n" +
+            "  return 1 \n" +
+            "else \n" +
+            "  return 0 \n" +
+            "end";
+
+    public CheckoutResult checkout(String userId) {
+        log.info("Checkout 비동기 이벤트 발행 시도: 사용자 ID={}", userId);
+
+        // 1. 메모리에서 검증 (Redis Hash Read)
         Cart cart = cartRepository.findById(userId).orElse(null);
 
-        log.info("CartService: Redis에서 로딩된 장바구니 객체: {}", cart);
-        if (cart != null) {
-            log.info("CartService: 로딩된 장바구니 userId: {}", cart.getUserId());
-            log.info("CartService: 로딩된 장바구니 storeId: {}", cart.getStoreId());
-            log.info("CartService: 로딩된 장바구니 cartItems 맵 상태: {}", cart.getCartItems());
-            log.info("CartService: 로딩된 장바구니 cartItems 맵 크기: {}",
-                    cart.getCartItems() != null ? cart.getCartItems().size() : 0);
-        }
-
-
         if (cart == null || cart.getCartItems() == null || cart.getCartItems().isEmpty()) {
-            String errorMessage = "장바구니가 비어 있거나 찾을 수 없습니다. 상품을 먼저 담아주세요.";
-            log.warn("Checkout 실패: {}", errorMessage);
-            return CheckoutResult.failure(errorMessage);
+            return CheckoutResult.failure("장바구니가 비어 있거나 찾을 수 없습니다.");
         }
 
         Long storeId = cart.getStoreId();
         if (storeId == null) {
-            String errorMessage = "장바구니에 가게 정보가 없습니다. (비정상 상태)";
-            log.error("Checkout 실패: {}", errorMessage);
-            return CheckoutResult.failure(errorMessage);
+            return CheckoutResult.failure("장바구니에 가게 정보가 없습니다.");
         }
 
         List<CartItemDto> orderItems = cart.getCartItems().values().stream()
-                .map(cartItem -> new CartItemDto(
-                        cartItem.getMenuId(),
-                        cartItem.getMenuName(),
-                        cartItem.getQuantity(),
-                        cartItem.getUnitPrice()
-                ))
+                .map(item -> new CartItemDto(item.getMenuId(), item.getMenuName(), item.getQuantity(), item.getUnitPrice()))
                 .collect(Collectors.toList());
 
-        // CreateOrderRequest 생성 시 userId를 포함하지 않음
-        CreateOrderRequest orderRequest = new CreateOrderRequest(storeId, orderItems);
-
-        log.info("장바구니 아이템 변환 결과 (orderItems): {}", orderItems);
-        log.info("주문 서비스로 보낼 CreateOrderRequest 객체: {}", orderRequest);
-
-        String orderIdFromService;
+        // 2. JSON 직렬화
+        String jsonPayload;
         try {
-            log.info("주문 서비스 Feign 호출 시도: 사용자 ID (헤더로 전달)={}, 가게 ID={}", userId, storeId);
-            // OrderServiceClient.createOrder 호출 시 첫 번째 인자로 userId 전달 (이것이 X-User-Id 헤더로 매핑됨)
-            orderIdFromService = orderServiceClient.createOrder(userId, orderRequest);
-            log.info("주문 서비스 Feign 호출 성공, 받은 주문 ID: {}", orderIdFromService);
+            jsonPayload = String.format("{\"userId\":\"%s\",\"storeId\":%d,\"orderItems\":%s}", 
+                                        userId, storeId, objectMapper.writeValueAsString(orderItems));
+        } catch (JsonProcessingException e) {
+            log.error("JSON 직렬화 오류", e);
+            return CheckoutResult.failure("결제 이벤트 생성 중 시스템 오류가 발생했습니다.");
+        }
 
-            if (orderIdFromService != null && !orderIdFromService.trim().isEmpty()) {
-                log.info("Checkout 성공: 주문 ID={}", orderIdFromService);
-                return CheckoutResult.success(orderIdFromService);
-            } else {
-                log.error("주문 서비스 Feign 호출 후 유효하지 않은 결과 받음: {}", orderIdFromService);
-                return CheckoutResult.failure("주문 생성 요청 중 오류 발생 (주문 서비스 연동 실패 - 유효하지 않은 응답)");
-            }
+        // 3. Lua 스크립트 실행 (Redis 원자성 보장)
+        String cartRedisKey = "cart:" + userId;
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(CHECKOUT_LUA_SCRIPT, Long.class);
 
-        } catch (FeignException.FeignClientException.NotFound notFoundException) {
-            log.error("주문 서비스 API Not Found 오류: 상태 코드={}, URL={}",
-                    notFoundException.status(), notFoundException.request().url(), notFoundException);
-            return CheckoutResult.failure("주문 서비스 API 경로 오류 (Not Found)");
+        Long result = redisTemplate.execute(script, List.of(cartRedisKey, OUTBOX_STREAM_KEY), jsonPayload);
 
-        } catch (FeignException.FeignClientException feignException) {
-            log.error("주문 서비스 Feign 호출 중 FeignClientException 발생: 상태 코드={}, 메시지={}",
-                    feignException.status(), feignException.getMessage(), feignException);
-            return CheckoutResult.failure("주문 생성 요청 중 오류 발생 (주문 서비스 응답 오류)");
-
-        } catch (Exception e) {
-            log.error("주문 서비스 Feign 호출 중 예외 발생: 예외 타입={}, 메시지={}",
-                    e.getClass().getName(), e.getMessage(), e);
-            return CheckoutResult.failure("주문 생성 요청 중 오류 발생 (주문 서비스 연동 실패 - 연결/기타 예외)");
+        if (result != null && result == 1L) {
+            log.info("✅ 장바구니 비우기 및 Outbox Event(CheckoutInitiated) 발행 성공: userId={}", userId);
+            return CheckoutResult.success("결제 요청이 비동기적으로 접수되었습니다. 곧 처리됩니다.");
+        } else {
+            log.warn("❌ 장바구니 비우기 실패 (장바구니가 없거나 다른 트랜잭션에서 이미 처리됨): userId={}", userId);
+            return CheckoutResult.failure("장바구니 상태 처리 중 충돌이 발생했습니다.");
         }
     }
 }
