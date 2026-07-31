@@ -1,12 +1,31 @@
 name: Build and Push to Amazon ECR
 
+# Image tag SSOT: localy-manifests/workloads/image-pins.yaml
+# GitOps deploys pin tags (e2e*), never `latest`.
+# This workflow always pushes: <gitops_tag> + latest.
+
 on:
   push:
     branches:
       - main
-    # Localy-app 저장소 기준 경로 (app 코드들이 Localy 폴더 안에 있음)
     paths:
-      - 'Localy/**'
+      - "Localy/**"
+      - ".github/workflows/build-push-ecr.yml"
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to build (or all)"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - edge-service
+          - store-service
+          - cart-service
+          - order-service
+          - payment-service
+          - user-service
 
 env:
   AWS_REGION: ap-northeast-2
@@ -21,14 +40,26 @@ jobs:
     name: Build & Push ${{ matrix.service }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        service: 
-          - edge-service
-          - store-service
-          - cart-service
-          - order-service
-          - payment-service
-          - user-service
+        include:
+          # KEEP IN SYNC with localy-manifests/workloads/image-pins.yaml
+          - service: edge-service
+            gitops_tag: e2e1
+          - service: store-service
+            gitops_tag: e2e2
+          - service: cart-service
+            gitops_tag: e2e1
+          - service: order-service
+            gitops_tag: e2e4
+          - service: payment-service
+            gitops_tag: e2e6
+          - service: user-service
+            gitops_tag: e2e1
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.service == 'all' ||
+      github.event.inputs.service == matrix.service
 
     steps:
       - name: Checkout code
@@ -44,18 +75,23 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ matrix.service }}
-          IMAGE_TAG: latest 
-        # Localy-app 저장소 기준 작업 디렉토리
+          GITOPS_TAG: ${{ matrix.gitops_tag }}
         working-directory: ./Localy/${{ matrix.service }}
         run: |
-          echo "🔨 $ECR_REPOSITORY 이미지 빌드 시작..."
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          
-          echo "☁️ ECR로 푸시 중..."
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          
-          echo "✅ 푸시 완료!"
+          set -eux
+          echo "Building ${ECR_REPOSITORY} → tags: ${GITOPS_TAG}, latest (linux/amd64)"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            -t "${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITOPS_TAG}" \
+            -t "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest" \
+            --push \
+            .
+          echo "Pushed ${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITOPS_TAG} and :latest"
