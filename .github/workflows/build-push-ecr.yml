@@ -1,8 +1,13 @@
 name: Build and Push to Amazon ECR
 
-# Image tag SSOT: localy-manifests/workloads/image-pins.yaml
-# GitOps deploys pin tags (e2e*), never `latest`.
-# This workflow always pushes: <gitops_tag> + latest.
+# Wave 1+2 tag contract:
+#   - Push only immutable tag: sha-<12>
+#   - Never push latest / e2e* (ECR IMMUTABLE + GitOps promotion)
+#   - On success, open a promotion PR against localy-manifests
+#
+# Required GitHub Actions secret (backend repo):
+#   LOCALY_MANIFESTS_TOKEN — PAT or GitHub App token with contents:write + pull_requests:write
+#   on hetrkumt/localy-manifests (or localy-project/localy-manifests)
 
 on:
   push:
@@ -27,43 +32,135 @@ on:
           - payment-service
           - user-service
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   AWS_REGION: ap-northeast-2
   ROLE_TO_ASSUME: arn:aws:iam::533003975005:role/github-actions-ecr-push-role
+  MANIFESTS_REPO: hetrkumt/localy-manifests
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
+  detect:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      short_sha: ${{ steps.plan.outputs.short_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Paths filter
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            edge-service:
+              - 'Localy/edge-service/**'
+            store-service:
+              - 'Localy/store-service/**'
+            cart-service:
+              - 'Localy/cart-service/**'
+            order-service:
+              - 'Localy/order-service/**'
+            payment-service:
+              - 'Localy/payment-service/**'
+            user-service:
+              - 'Localy/user-service/**'
+            workflow:
+              - '.github/workflows/build-push-ecr.yml'
+
+      - name: Build matrix
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(echo '${{ github.sha }}' | cut -c1-12)"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+          ALL='["edge-service","store-service","cart-service","order-service","payment-service","user-service"]'
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT="${{ github.event.inputs.service }}"
+            if [ "$INPUT" = "all" ]; then
+              echo "matrix=${ALL}" >> "$GITHUB_OUTPUT"
+            else
+              echo "matrix=[\"${INPUT}\"]" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # Workflow change ⇒ rebuild all (Dockerfile/CI contract drift).
+          if [ "${{ steps.filter.outputs.workflow }}" = "true" ]; then
+            echo "matrix=${ALL}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Explicit boolean checks (reliable across dorny versions)
+          SERVICES=()
+          [ "${{ steps.filter.outputs.edge-service }}" = "true" ] && SERVICES+=("edge-service")
+          [ "${{ steps.filter.outputs.store-service }}" = "true" ] && SERVICES+=("store-service")
+          [ "${{ steps.filter.outputs.cart-service }}" = "true" ] && SERVICES+=("cart-service")
+          [ "${{ steps.filter.outputs.order-service }}" = "true" ] && SERVICES+=("order-service")
+          [ "${{ steps.filter.outputs.payment-service }}" = "true" ] && SERVICES+=("payment-service")
+          [ "${{ steps.filter.outputs.user-service }}" = "true" ] && SERVICES+=("user-service")
+
+          if [ ${#SERVICES[@]} -eq 0 ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+          else
+            MATRIX="$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -s -c .)"
+            echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push:
     name: Build & Push ${{ matrix.service }}
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # KEEP IN SYNC with localy-manifests/workloads/image-pins.yaml
-          - service: edge-service
-            gitops_tag: e2e1
-          - service: store-service
-            gitops_tag: e2e2
-          - service: cart-service
-            gitops_tag: e2e1
-          - service: order-service
-            gitops_tag: e2e4
-          - service: payment-service
-            gitops_tag: e2e6
-          - service: user-service
-            gitops_tag: e2e1
-    if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.service == 'all' ||
-      github.event.inputs.service == matrix.service
-
+        service: ${{ fromJson(needs.detect.outputs.matrix) }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      # Per-matrix outputs are not aggregatable; promote reads the artifact instead.
+      noop: "1"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        shell: bash
+        run: |
+          SHORT_SHA="${{ needs.detect.outputs.short_sha }}"
+          echo "image_tag=sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=sha-${SHORT_SHA}" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: Localy/${{ matrix.service }}/build.gradle
+
+      - name: Unit tests (soft gate)
+        # SpringBootTest contextLoads needs infra; hard-fail deferred until testcontainers/profile.
+        working-directory: ./Localy/${{ matrix.service }}
+        continue-on-error: true
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon --stacktrace
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -78,20 +175,151 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build and push (sha tag only)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Localy/${{ matrix.service }}
+          push: true
+          platforms: linux/amd64
+          provenance: false
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Trivy vulnerability scan (HIGH/CRITICAL fail-fast)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Cosign keyless sign
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ matrix.service }}
-          GITOPS_TAG: ${{ matrix.gitops_tag }}
-        working-directory: ./Localy/${{ matrix.service }}
+          COSIGN_EXPERIMENTAL: "1"
         run: |
-          set -eux
-          echo "Building ${ECR_REPOSITORY} → tags: ${GITOPS_TAG}, latest (linux/amd64)"
-          docker buildx build \
-            --platform linux/amd64 \
-            --provenance=false \
-            -t "${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITOPS_TAG}" \
-            -t "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest" \
-            --push \
-            .
-          echo "Pushed ${ECR_REGISTRY}/${ECR_REPOSITORY}:${GITOPS_TAG} and :latest"
+          set -euo pipefail
+          IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+          if [ -z "$DIGEST" ]; then
+            echo "Missing image digest from build-push-action" >&2
+            exit 1
+          fi
+          cosign sign --yes "${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}@${DIGEST}"
+
+      - name: Write promotion stub
+        shell: bash
+        run: |
+          mkdir -p promotion
+          echo "${{ matrix.service }}=${{ env.IMAGE_TAG }}" > "promotion/${{ matrix.service }}.env"
+
+      - name: Upload promotion stub
+        uses: actions/upload-artifact@v4
+        with:
+          name: promote-${{ matrix.service }}
+          path: promotion/${{ matrix.service }}.env
+          if-no-files-found: error
+
+  promote:
+    name: Open GitOps promotion PR
+    needs: [detect, build-and-push]
+    if: >-
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      needs.detect.outputs.matrix != '[]' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require manifests token
+        env:
+          TOKEN: ${{ secrets.LOCALY_MANIFESTS_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Missing secret LOCALY_MANIFESTS_TOKEN. Add a PAT/App token with write access to ${{ env.MANIFESTS_REPO }}."
+            exit 1
+          fi
+
+      - name: Download promotion stubs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: promote-*
+          merge-multiple: true
+          path: promotion
+
+      - name: Checkout manifests
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MANIFESTS_REPO }}
+          token: ${{ secrets.LOCALY_MANIFESTS_TOKEN }}
+          path: manifests
+
+      - name: Update image pins and kustomize newTag
+        id: bump
+        shell: bash
+        working-directory: manifests
+        run: |
+          set -euo pipefail
+          TAG_PREFIX="sha-"
+          SHORT_SHA="${{ needs.detect.outputs.short_sha }}"
+          IMAGE_TAG="sha-${SHORT_SHA}"
+          CHANGED=()
+
+          while IFS='=' read -r SVC TAG; do
+            [ -z "${SVC}" ] && continue
+            KUST="workloads/${SVC}/overlays/prod/kustomization.yaml"
+            PINS="workloads/image-pins.yaml"
+            if [ ! -f "$KUST" ]; then
+              echo "Missing $KUST" >&2
+              exit 1
+            fi
+            # Update newTag in kustomization
+            sed -i -E "s/^([[:space:]]*newTag:).*/\1 ${TAG}/" "$KUST"
+            # Update image-pins.yaml service entry
+            sed -i -E "s/^([[:space:]]*${SVC}:).*/\1 ${TAG}/" "$PINS"
+            CHANGED+=("${SVC}:${TAG}")
+            echo "Promoted ${SVC} → ${TAG}"
+          done < <(cat ../promotion/*.env)
+
+          {
+            echo "summary<<EOF"
+            printf '%s\n' "${CHANGED[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.LOCALY_MANIFESTS_TOKEN }}
+          path: manifests
+          commit-message: |
+            chore(images): promote ${{ steps.bump.outputs.image_tag }}
+
+            ${{ steps.bump.outputs.summary }}
+          title: "chore(images): promote ${{ steps.bump.outputs.image_tag }}"
+          body: |
+            ## GitOps image promotion (Wave 1+2)
+
+            Source commit: `${{ github.repository }}@${{ github.sha }}`
+            Image tag: `${{ steps.bump.outputs.image_tag }}`
+
+            ```
+            ${{ steps.bump.outputs.summary }}
+            ```
+
+            - CI: Trivy HIGH/CRITICAL gate passed
+            - Cosign keyless signature attached
+            - ECR tag mutability: IMMUTABLE (`sha-*` only)
+          branch: ci/promote-${{ steps.bump.outputs.image_tag }}
+          delete-branch: true
+          labels: |
+            gitops
+            image-promotion
