@@ -47,6 +47,10 @@ public class SecurityConfig {
                 .securityContextRepository(securityContextRepository)
                 // 요청 경로별 접근 권한 설정
                 .authorizeExchange(exchange -> exchange
+                        // Probe/ALB health must return 200 (not OAuth redirect).
+                        .pathMatchers("/actuator/health/**").permitAll()
+                        .pathMatchers("/actuator/prometheus").permitAll()
+
                         // 회원가입 엔드포인트 허용 - 인증 없이 접근 가능하도록 설정
                         .pathMatchers(HttpMethod.POST, "/api/users").permitAll() // <-- 이 라인을 추가합니다.
 
