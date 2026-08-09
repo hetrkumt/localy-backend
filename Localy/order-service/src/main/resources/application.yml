@@ -108,6 +108,10 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # Required for localy:http_latency_p95 histogram_quantile (Batch B SLI)
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:
