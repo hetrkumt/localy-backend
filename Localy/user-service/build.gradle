@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.0.6'
+	id 'org.springframework.boot' version '3.5.16'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -32,9 +32,9 @@ dependencies {
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	
-	// [추가] K8s 생존력 및 관측성용 Actuator
+	// [추�?] K8s ?�존??�?관측성??Actuator
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
-	// [추가] 502/504 방어용 Resilience4j Core & Reactor 연동 모듈
+	// [추�?] 502/504 방어??Resilience4j Core & Reactor ?�동 모듈
 	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.0.2'
 	implementation 'io.github.resilience4j:resilience4j-reactor:2.0.2'
 

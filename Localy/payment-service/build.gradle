@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.4.4'
+	id 'org.springframework.boot' version '3.5.16'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -24,7 +24,7 @@ repositories {
 }
 
 ext {
-	set('springCloudVersion', "2024.0.0") // 주문 서비스와 동일한 스프링 클라우드 버전
+	set('springCloudVersion', "2025.0.3") // 주문 ?�비?��? ?�일???�프�??�라?�드 버전
 }
 
 
@@ -35,7 +35,7 @@ dependencies {
 	implementation 'org.springframework.kafka:spring-kafka'
 	implementation 'org.springframework.cloud:spring-cloud-function-context'
 
-	// [NEW] AWS MSK IAM Auth (Zero-Trust Kafka 연결용)
+	// [NEW] AWS MSK IAM Auth (Zero-Trust Kafka ?�결??
 	implementation 'software.amazon.msk:aws-msk-iam-auth:2.2.0'
 
 	compileOnly 'org.projectlombok:lombok'
