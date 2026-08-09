@@ -5,36 +5,39 @@ FROM eclipse-temurin:17-jdk-alpine AS builder
 
 WORKDIR /app
 
-# Gradle Wrapper 파일, 설정 파일, 빌드 스크립트 복사
+# Gradle Wrapper ?�일, ?�정 ?�일, 빌드 ?�크립트 복사
 COPY gradlew .
 COPY gradle ./gradle
 COPY build.gradle .
 COPY settings.gradle .
 
-# 애플리케이션 소스 코드 복사
+# ?�플리�??�션 ?�스 코드 복사
 COPY src ./src
 
-# gradlew 실행 권한 부여
+# gradlew ?�행 권한 부??
 RUN chmod +x gradlew
 
-# Gradle을 사용하여 애플리케이션 빌드 (테스트 건너뜀)
+# Gradle???�용?�여 ?�플리�??�션 빌드 (?�스??건너?�)
 RUN ./gradlew clean build -x test
 
 # Stage 2: Create the final runtime image using a smaller JRE image
 FROM eclipse-temurin:17-jre-alpine
 
+# Patch OS packages before runtime (Trivy HIGH with fixes: libexpat/p11-kit etc.)
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 
-# 런타임 내부 디버깅을 위한 curl 도구 설치 및 비루트 계정(appuser) 생성
+# ?��????��? ?�버깅을 ?�한 curl ?�구 ?�치 �?비루??계정(appuser) ?�성
 RUN apk add --no-cache curl && \
     adduser -u 1001 -D appuser
 
-# 빌드 완료된 jar 파일을 복사할 때 소유권을 appuser로 강제 제한
+# 빌드 ?�료??jar ?�일??복사?????�유권을 appuser�?강제 ?�한
 COPY --chown=appuser:appuser --from=builder /app/build/libs/*.jar app.jar
 
 EXPOSE 9001
 
-# 컨테이너 실행 권한을 Root에서 appuser(비루트)로 강제 위임
+# 컨테?�너 ?�행 권한??Root?�서 appuser(비루??�?강제 ?�임
 USER appuser
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
