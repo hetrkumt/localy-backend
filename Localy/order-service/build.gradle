@@ -24,8 +24,8 @@ repositories {
 }
 ext {
 	set('springCloudVersion', "2025.0.3")
-	// Trivy CRITICAL: tomcat-embed-core 10.1.55 → Fixed 10.1.58+
-	set('tomcat.version', '10.1.58')
+	// Trivy CRITICAL: tomcat-embed-core 10.1.55 → Fixed ≥10.1.58 (Maven: 10.1.58 없음 → 10.1.60)
+	set('tomcat.version', '10.1.60')
 }
 
 dependencies {
