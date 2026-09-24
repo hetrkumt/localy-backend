@@ -204,15 +204,27 @@ jobs:
       - name: Cosign keyless sign
         env:
           COSIGN_EXPERIMENTAL: "1"
+          AWS_REGION: ${{ env.AWS_REGION }}
         run: |
           set -euo pipefail
-          IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}"
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          SERVICE="${{ matrix.service }}"
           DIGEST="${{ steps.build.outputs.digest }}"
           if [ -z "$DIGEST" ]; then
             echo "Missing image digest from build-push-action" >&2
             exit 1
           fi
-          cosign sign --yes "${{ steps.login-ecr.outputs.registry }}/${{ matrix.service }}@${DIGEST}"
+          # IMMUTABLE ECR: same content digest reuses sha256-<digest>.sig — skip re-push.
+          DIGEST_HEX="${DIGEST#sha256:}"
+          SIG_TAG="sha256-${DIGEST_HEX}.sig"
+          if aws ecr describe-images \
+            --repository-name "$SERVICE" \
+            --image-ids "imageTag=${SIG_TAG}" \
+            --region "$AWS_REGION" >/dev/null 2>&1; then
+            echo "Signature already present for ${DIGEST} (${SIG_TAG}); skipping cosign sign"
+            exit 0
+          fi
+          cosign sign --yes "${REGISTRY}/${SERVICE}@${DIGEST}"
 
       - name: Write promotion stub
         shell: bash
