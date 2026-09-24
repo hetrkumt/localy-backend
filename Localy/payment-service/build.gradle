@@ -24,7 +24,9 @@ repositories {
 }
 
 ext {
-	set('springCloudVersion', "2025.0.3") // Ï£ºÎ¨∏ ?úÎπÑ?§Ï? ?ôÏùº???§ÌîÑÎß??¥Îùº?∞Îìú Î≤ÑÏ†Ñ
+	set('springCloudVersion', "2025.0.3")
+	// Trivy CRITICAL: tomcat-embed-core 10.1.55 ? Fixed ?10.1.58 (Maven: 10.1.60)
+	set('tomcat.version', '10.1.60')
 }
 
 
@@ -35,14 +37,14 @@ dependencies {
 	implementation 'org.springframework.kafka:spring-kafka'
 	implementation 'org.springframework.cloud:spring-cloud-function-context'
 
-	// [NEW] AWS MSK IAM Auth (Zero-Trust Kafka ?∞Í≤∞??
+	// [NEW] AWS MSK IAM Auth (Zero-Trust Kafka ?????
 	implementation 'software.amazon.msk:aws-msk-iam-auth:2.2.0'
 
 	compileOnly 'org.projectlombok:lombok'
 
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
-	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'org.postgresql:postgresql:42.7.12'
 
 	annotationProcessor 'org.projectlombok:lombok'
 
@@ -52,7 +54,8 @@ dependencies {
 
 dependencyManagement {
 	imports {
-		mavenBom 'io.netty:netty-bom:4.1.136.Final'
+		// Trivy CRITICAL: netty-handler 4.1.136 ? Fixed 4.1.137+
+		mavenBom 'io.netty:netty-bom:4.1.137.Final'
 		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
 	}
 }
@@ -68,7 +71,7 @@ dependencies {
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     // --- [Phase 1: AWS IAM DB Auth & Kafka] ---
-    implementation 'software.amazon.jdbc:aws-advanced-jdbc-wrapper:2.3.2'
+    implementation 'software.amazon.jdbc:aws-advanced-jdbc-wrapper:2.6.5'
     implementation 'net.ttddyy.observation:datasource-micrometer-spring-boot:1.0.1'
     implementation 'org.springframework.kafka:spring-kafka'
 }
