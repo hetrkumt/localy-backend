@@ -33,39 +33,39 @@ ext {
 
 
 dependencies {
-	// 기존 JPA �?블록??JDBC ?�라?�버 ?�거
-	// implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // ??줄을 ?�거?�거??주석 처리
-	// runtimeOnly 'org.postgresql:postgresql' // ??줄을 ?�거?�거??주석 처리 (PostgreSQL 블록???�라?�버)
+	// 기존 JPA �?블록??JDBC ?�라?�버 ?�거
+	// implementation 'org.springframework.boot:spring-boot-starter-data-jpa' // ??줄을 ?�거?�거??주석 처리
+	// runtimeOnly 'org.postgresql:postgresql' // ??줄을 ?�거?�거??주석 처리 (PostgreSQL 블록???�라?�버)
 
-	// Reactive ?�이?�베?�스 (R2DBC) ?��???�??�당 Reactive ?�라?�버 추�?
-	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc' // R2DBC ?��???추�?
-	runtimeOnly 'org.postgresql:postgresql'
+	// Reactive ?�이?�베?�스 (R2DBC) ?��???�??�당 Reactive ?�라?�버 추�?
+	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc' // R2DBC ?��???추�?
+	runtimeOnly 'org.postgresql:postgresql:42.7.12'
 	runtimeOnly 'org.postgresql:r2dbc-postgresql'
 	runtimeOnly 'org.springframework:spring-jdbc'
-	// 만약 MySQL ?�용 ?? runtimeOnly 'dev.miku:r2dbc-mysql'
-	// 만약 H2 ?�용 ?? runtimeOnly 'io.r2dbc:r2dbc-h2'
+	// 만약 MySQL ?�용 ?? runtimeOnly 'dev.miku:r2dbc-mysql'
+	// 만약 H2 ?�용 ?? runtimeOnly 'io.r2dbc:r2dbc-h2'
 
-	// 기존 Spring Web ?��????�거?�고 WebFlux ?�용 ?�정
-	// implementation 'org.springframework.boot:spring-boot-starter-web' // ??줄을 ?�거?�거??주석 처리
-	implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebFlux ?��???추�? (?��? Gateway ?�문???�함?�어 ?�을 ?�도 ?�습?�다.)
+	// 기존 Spring Web ?��????�거?�고 WebFlux ?�용 ?�정
+	// implementation 'org.springframework.boot:spring-boot-starter-web' // ??줄을 ?�거?�거??주석 처리
+	implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebFlux ?��???추�? (?��? Gateway ?�문???�함?�어 ?�을 ?�도 ?�습?�다.)
 
 	// [NEW] AWS SDK v2 for S3 (S3AsyncClient & S3Presigner 지??
 	implementation platform('software.amazon.awssdk:bom:2.24.12')
 	implementation 'software.amazon.awssdk:s3'
 
-	implementation 'org.springframework.boot:spring-boot-starter-validation' // ?�효??검�?(?��?)
-	implementation 'org.springframework.boot:spring-boot-starter-actuator' // ?�추?�이??(?��?)
-	implementation 'org.springframework.boot:spring-boot-devtools' // 개발 ?�구 (?��?)
+	implementation 'org.springframework.boot:spring-boot-starter-validation' // ?�효??검�?(?��?)
+	implementation 'org.springframework.boot:spring-boot-starter-actuator' // ?�추?�이??(?��?)
+	implementation 'org.springframework.boot:spring-boot-devtools' // 개발 ?�구 (?��?)
 
 
-	compileOnly 'org.projectlombok:lombok' // 롬복 (?��?)
-	annotationProcessor 'org.projectlombok:lombok' // 롬복 (?��?)
+	compileOnly 'org.projectlombok:lombok' // 롬복 (?��?)
+	annotationProcessor 'org.projectlombok:lombok' // 롬복 (?��?)
 
-	testImplementation 'org.springframework.boot:spring-boot-starter-test' // ?�스??(?��?)
+	testImplementation 'org.springframework.boot:spring-boot-starter-test' // ?�스??(?��?)
 
-	testImplementation 'io.projectreactor:reactor-test' // Reactive 코드 ?�스?��? ?�한 ?�용???�이브러�?추�?
+	testImplementation 'io.projectreactor:reactor-test' // Reactive 코드 ?�스?��? ?�한 ?�용???�이브러�?추�?
 	testImplementation 'org.mockito:mockito-core'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher' // ?�스??(?��?)
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher' // ?�스??(?��?)
 
 }
 
@@ -91,9 +91,3 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
-// Trivy HIGH: pin postgresql driver
-configurations.all {
-	resolutionStrategy {
-		force 'org.postgresql:postgresql:42.7.12'
-	}
-}
