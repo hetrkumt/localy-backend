@@ -23,10 +23,14 @@ spring:
               - email
         provider:
           keycloak:
-            issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
+            # Avoid issuer-uri discovery: Keycloak returns "HTTPS required" on HTTP well-known
+            token-uri: ${KEYCLOAK_BASE_URL:http://localhost:8080}/realms/localy/protocol/openid-connect/token
+            authorization-uri: ${KEYCLOAK_BASE_URL:http://localhost:8080}/realms/localy/protocol/openid-connect/auth
+            jwk-set-uri: ${KEYCLOAK_BASE_URL:http://localhost:8080}/realms/localy/protocol/openid-connect/certs
+            user-info-uri: ${KEYCLOAK_BASE_URL:http://localhost:8080}/realms/localy/protocol/openid-connect/userinfo
       resource-server:
         jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/localy}
+          jwk-set-uri: ${KEYCLOAK_BASE_URL:http://localhost:8080}/realms/localy/protocol/openid-connect/certs
 
 logging:
   pattern:
