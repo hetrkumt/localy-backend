@@ -29,6 +29,9 @@ ext {
 	set('springCloudVersion', "2025.0.3")
 	set('testcontainersVersion', "1.19.8")
 
+	// Trivy 2026-10: jackson 2.21.4 HIGH, spring-webmvc/webflux 6.2.19 CRITICAL (OSS fix 7.0.9), lz4 1.10.1 HIGH
+	set('jackson-bom.version', '2.21.7')
+	set('spring-framework.version', '7.0.9')
 }
 
 
@@ -91,3 +94,17 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
+
+// Trivy CVE-2026-106451: lz4-java >= 1.11.4
+configurations.configureEach {
+	resolutionStrategy.eachDependency { details ->
+		if (details.requested.group == 'at.yawk.lz4' && details.requested.name == 'lz4-java') {
+			details.useVersion '1.11.4'
+			details.because 'Trivy CVE-2026-106451'
+		}
+		if (details.requested.group == 'org.lz4' && details.requested.name == 'lz4-java') {
+			details.useVersion '1.11.4'
+			details.because 'Trivy CVE-2026-106451 (legacy coords)'
+		}
+	}
+}

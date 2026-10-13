@@ -23,6 +23,12 @@ repositories {
 	mavenCentral()
 }
 
+ext {
+	// Trivy 2026-10: jackson 2.21.4 HIGH, spring-webmvc/webflux 6.2.19 CRITICAL (OSS fix 7.0.9), lz4 1.10.1 HIGH
+	set('jackson-bom.version', '2.21.7')
+	set('spring-framework.version', '7.0.9')
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.security:spring-security-oauth2-resource-server'
@@ -32,9 +38,9 @@ dependencies {
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	
-	// [추�?] K8s ?�존??�?관측성??Actuator
+	// [추�?] K8s ?�존??�?관측성??Actuator
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
-	// [추�?] 502/504 방어??Resilience4j Core & Reactor ?�동 모듈
+	// [추�?] 502/504 방어??Resilience4j Core & Reactor ?�동 모듈
 	implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.0.2'
 	implementation 'io.github.resilience4j:resilience4j-reactor:2.0.2'
 
@@ -65,4 +71,18 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+}
+
+// Trivy CVE-2026-106451: lz4-java >= 1.11.4
+configurations.configureEach {
+	resolutionStrategy.eachDependency { details ->
+		if (details.requested.group == 'at.yawk.lz4' && details.requested.name == 'lz4-java') {
+			details.useVersion '1.11.4'
+			details.because 'Trivy CVE-2026-106451'
+		}
+		if (details.requested.group == 'org.lz4' && details.requested.name == 'lz4-java') {
+			details.useVersion '1.11.4'
+			details.because 'Trivy CVE-2026-106451 (legacy coords)'
+		}
+	}
 }
