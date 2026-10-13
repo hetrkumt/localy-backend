@@ -65,9 +65,12 @@ dependencies {
 // Trivy CVE-2026-106451: lz4-java >= 1.11.4
 configurations.configureEach {
 	resolutionStrategy.eachDependency { details ->
-		if (details.requested.group.startsWith('com.fasterxml.jackson')) {
+		if (details.requested.group == 'com.fasterxml.jackson.core' && details.requested.name == 'jackson-annotations') {
+			details.useVersion '2.21'
+			details.because 'Jackson annotations use 2.21 (no 2.21.7 artifact)'
+		} else if (details.requested.group.startsWith('com.fasterxml.jackson') && details.requested.name != 'jackson-bom') {
 			details.useVersion '2.21.7'
-			details.because 'Trivy Jackson 2 HIGH'
+			details.because 'Trivy Jackson 2 HIGH (Boot jackson2 / transitive)'
 		}
 		if (details.requested.group == 'at.yawk.lz4' && details.requested.name == 'lz4-java') {
 			details.useVersion '1.11.4'
