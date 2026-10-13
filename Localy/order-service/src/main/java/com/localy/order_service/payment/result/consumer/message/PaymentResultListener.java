@@ -6,10 +6,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.BackOff;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -21,7 +21,7 @@ public class PaymentResultListener {
 
     @RetryableTopic(
             attempts = "3",
-            backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 10000), // 1초, 2초, 4초 지수적 증가
+            backOff = @BackOff(delay = 1000, multiplier = 2.0, maxDelay = 10000), // 1초, 2초, 4초 지수적 증가
             dltStrategy = DltStrategy.FAIL_ON_ERROR
     )
     @KafkaListener(topics = "payment-result", groupId = "order-payment-result-group-v3")

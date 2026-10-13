@@ -6,10 +6,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.BackOff;
 import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
-import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -23,7 +23,7 @@ public class OrderApprovedEventListener {
     // ?먮윭 諛쒖깮 ??理쒕? 3踰덇퉴吏 ?ъ떆?꾪븯硫? 媛꾧꺽? 1珥덈???2諛곗뵫 ?섏뼱??(1珥? 2珥? 4珥?
     @RetryableTopic(
             attempts = "3",
-            backoff = @Backoff(delay = 1000, multiplier = 2.0),
+            backOff = @BackOff(delay = 1000, multiplier = 2.0),
             autoCreateTopics = "false"
     )
     @KafkaListener(topics = "order-approved", groupId = "payment-approved-group-e2e4b")
