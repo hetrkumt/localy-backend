@@ -16,22 +16,13 @@ import org.springframework.security.oauth2.client.web.server.ServerOAuth2Authori
 
 @Configuration
 public class SecurityConfig {
-    // application.yml에서 issuer-uri 값을 직접 주입받습니다.
-    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
-    private String issuerUri;
+    // Prefer jwk-set-uri: Keycloak HTTP well-known returns "HTTPS required".
+    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
+    private String jwkSetUri;
 
-    // ReactiveJwtDecoder 빈을 수동으로 정의합니다.
-    // Spring Security는 이 빈을 사용하여 JWT를 디코딩하고 검증합니다.
     @Bean
     public ReactiveJwtDecoder reactiveJwtDecoder() {
-        System.out.println("--- SecurityConfig: ReactiveJwtDecoder 빈 생성 시작 ---"); // 로그 추가
-        System.out.println("--- SecurityConfig: issuerUri 값 확인: " + issuerUri + " ---"); // application.yml에서 가져온 값 확인 로그
-        // NimbusReactiveJwtDecoder.withIssuerLocation()을 사용하면
-        // 자동으로 .well-known/openid-configuration에서 Discovery 문서를 가져오고
-        // 그 안의 jwks_uri를 찾아 공개 키를 다운로드합니다.
-        ReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withIssuerLocation(issuerUri).build();
-        System.out.println("--- SecurityConfig: ReactiveJwtDecoder 빈 생성 완료 ---"); // 로그 추가
-        return decoder;
+        return NimbusReactiveJwtDecoder.withJwkSetUri(jwkSetUri).build();
     }
 
     @Bean
