@@ -38,6 +38,8 @@ public class SecurityConfig {
                 .securityContextRepository(securityContextRepository)
                 // 요청 경로별 접근 권한 설정
                 .authorizeExchange(exchange -> exchange
+                        // Prometheus scrape + probes on management:9090 (and main if co-hosted)
+                        .pathMatchers("/actuator/**").permitAll()
                         // 회원가입 엔드포인트 허용 - 인증 없이 접근 가능하도록 설정
                         .pathMatchers(HttpMethod.POST, "/api/users").permitAll() // <-- 이 라인을 추가합니다.
 
