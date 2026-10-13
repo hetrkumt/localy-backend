@@ -47,7 +47,8 @@ dependencies {
 	implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 	// --- [Phase 1: Kafka] ---
-	implementation 'org.springframework.kafka:spring-kafka'
+	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+	implementation 'software.amazon.msk:aws-msk-iam-auth:2.2.0'
 }
 
 dependencyManagement {

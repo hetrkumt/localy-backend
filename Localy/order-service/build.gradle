@@ -36,7 +36,8 @@ dependencies {
 	implementation 'org.springframework.cloud:spring-cloud-starter-stream-kafka'
 	// Boot 4 prefers Jackson 3; keep Jackson 2 ObjectMapper APIs via compatibility module
 	implementation 'org.springframework.boot:spring-boot-jackson2'
-	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-hibernate6'
+	// Hibernate 7: hibernate6 module crashes (Mapping removed); use hibernate7
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-hibernate7:2.21.7'
 
 	// AWS MSK IAM Auth (Zero-Trust Kafka)
 	implementation 'software.amazon.msk:aws-msk-iam-auth:2.2.0'
