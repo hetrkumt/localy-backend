@@ -47,9 +47,13 @@ management:
       type: W3C
     sampling:
       probability: 1.0
-  otlp:
+  # Boot 4: OTLP export under management.opentelemetry (old management.otlp.tracing ignored)
+  opentelemetry:
     tracing:
-      endpoint: "http://${HOST_IP:otel-agent-opentelemetry-collector.platform.svc.cluster.local}:4318/v1/traces"
+      export:
+        otlp:
+          # Obs F3: central otel-gateway (not node HOST_IP / DaemonSet agent)
+          endpoint: "http://otel-gateway-opentelemetry-collector.monitoring.svc.cluster.local:4318/v1/traces"
   metrics:
     tags:
       application: ${spring.application.name}

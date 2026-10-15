@@ -68,8 +68,8 @@ tasks.named('test') {
 // --- [Phase 1: Observability Injection] ---
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
-	implementation 'io.micrometer:micrometer-tracing-bridge-otel'
-	implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+	// Boot 4: starter wires OtlpHttpSpanExporter (bridge+exporter alone do not auto-export)
+	implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 	// --- [Phase 1: AWS IAM DB Auth & Kafka] ---
 	implementation 'software.amazon.jdbc:aws-advanced-jdbc-wrapper:2.6.5'
